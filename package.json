@@ -1,0 +1,16 @@
+{
+  "name": "family-chat",
+  "version": "1.0.0",
+  "description": "Семейный веб-чат",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "nedb-promises": "^6.0.3",
+    "socket.io": "^4.7.2"
+  }
+}
