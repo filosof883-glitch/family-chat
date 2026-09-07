@@ -68,7 +68,8 @@
       <button id="send-btn" type="button">➤</button>
     </div>
 
-    <!-- Оверлей Звонка -->
+    <!-- Элементы видео и аудио -->
+    <audio id="remote-audio" autoplay></audio>
     <div id="call-overlay">
       <h3 id="call-status">Входящий вызов...</h3>
       <div id="video-container">
@@ -98,20 +99,25 @@
     const photoBtn = document.getElementById('photo-btn');
     const fileInput = document.getElementById('file-input');
 
-    // Звонки
+    // Элементы звонка
     const callOverlay = document.getElementById('call-overlay');
     const callStatus = document.getElementById('call-status');
     const acceptCallBtn = document.getElementById('accept-call-btn');
     const endCallBtn = document.getElementById('end-call-btn');
     const localVideo = document.getElementById('local-video');
     const remoteVideo = document.getElementById('remote-video');
+    const remoteAudio = document.getElementById('remote-audio');
 
     let localStream;
     let peerConnection;
     let incomingOffer;
+    let isVideoCall = false;
 
     const rtcConfig = {
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' }
+      ]
     };
 
     if (currentUser) {
@@ -203,10 +209,13 @@
     document.getElementById('audio-call-btn').addEventListener('click', () => startCall(false));
     document.getElementById('video-call-btn').addEventListener('click', () => startCall(true));
 
-    async function startCall(isVideo) {
+    async function startCall(videoEnabled) {
+      isVideoCall = videoEnabled;
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo });
-        localVideo.srcObject = localStream;
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideoCall });
+        localVideo.srcObject = isVideoCall ? localStream : null;
+        localVideo.style.display = isVideoCall ? 'block' : 'none';
+
         callOverlay.style.display = 'flex';
         acceptCallBtn.style.display = 'none';
         callStatus.innerText = 'Вызов...';
@@ -215,7 +224,12 @@
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
         peerConnection.ontrack = (event) => {
-          remoteVideo.srcObject = event.streams[0];
+          if (isVideoCall) {
+            remoteVideo.srcObject = event.streams[0];
+          } else {
+            remoteAudio.srcObject = event.streams[0];
+            remoteAudio.play().catch(e => console.log('Audio autoplay error:', e));
+          }
         };
 
         peerConnection.onicecandidate = (event) => {
@@ -227,7 +241,7 @@
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
 
-        socket.emit('call-user', { from: currentUser, offer, isVideo });
+        socket.emit('call-user', { from: currentUser, offer, isVideo: isVideoCall });
       } catch (err) {
         alert('Ошибка доступа к микрофону/камере: ' + err.message);
       }
@@ -236,46 +250,65 @@
     socket.on('incoming-call', async (data) => {
       if (data.from === currentUser) return;
       incomingOffer = data.offer;
+      isVideoCall = data.isVideo;
+
       callOverlay.style.display = 'flex';
       acceptCallBtn.style.display = 'inline-block';
-      callStatus.innerText = `Входящий ${data.isVideo ? 'видео' : 'аудио'} звонок от ${data.from}`;
+      callStatus.innerText = `Входящий ${isVideoCall ? 'видео' : 'аудио'} звонок от ${data.from}`;
     });
 
     acceptCallBtn.addEventListener('click', async () => {
       acceptCallBtn.style.display = 'none';
       callStatus.innerText = 'Соединение...';
 
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      localVideo.srcObject = localStream;
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideoCall });
+        localVideo.srcObject = isVideoCall ? localStream : null;
+        localVideo.style.display = isVideoCall ? 'block' : 'none';
 
-      peerConnection = new RTCPeerConnection(rtcConfig);
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+        peerConnection = new RTCPeerConnection(rtcConfig);
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-      peerConnection.ontrack = (event) => {
-        remoteVideo.srcObject = event.streams[0];
-      };
+        peerConnection.ontrack = (event) => {
+          if (isVideoCall) {
+            remoteVideo.srcObject = event.streams[0];
+            remoteVideo.play().catch(e => console.log('Video play error:', e));
+          } else {
+            remoteAudio.srcObject = event.streams[0];
+            remoteAudio.play().catch(e => console.log('Audio play error:', e));
+          }
+        };
 
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          socket.emit('ice-candidate', { candidate: event.candidate });
-        }
-      };
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            socket.emit('ice-candidate', { candidate: event.candidate });
+          }
+        };
 
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOffer));
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
 
-      socket.emit('answer-call', { answer });
+        socket.emit('answer-call', { answer });
+      } catch (err) {
+        alert('Ошибка принятия вызова: ' + err.message);
+      }
     });
 
     socket.on('call-answered', async (data) => {
       callStatus.innerText = 'Разговор...';
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+      if (peerConnection) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+      }
     });
 
     socket.on('ice-candidate', async (candidate) => {
-      if (peerConnection) {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      if (peerConnection && candidate) {
+        try {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+          console.error('Ошибка ICE:', e);
+        }
       }
     });
 
@@ -288,8 +321,16 @@
 
     function closeCall() {
       callOverlay.style.display = 'none';
-      if (peerConnection) peerConnection.close();
-      if (localStream) localStream.getTracks().forEach(track => track.stop());
+      if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+      }
+      if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+      }
+      remoteAudio.srcObject = null;
+      remoteVideo.srcObject = null;
     }
 
     // История и сообщения
