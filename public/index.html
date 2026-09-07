@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Семейный Чат</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #e5ddd5; height: 100vh; display: flex; flex-direction: column; }
+    #auth-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #075e54; color: white; padding: 20px; }
+    #auth-form { background: white; padding: 25px; border-radius: 12px; color: #333; width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+    #auth-form h2 { font-size: 20px; text-align: center; color: #075e54; }
+    #auth-form input { padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; outline: none; }
+    #auth-form button { padding: 12px; background: #25d366; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    #chat-screen { display: none; flex-direction: column; height: 100vh; }
+    header { background: #075e54; color: white; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    header h1 { font-size: 18px; }
+    #logout-btn { background: transparent; border: 1px solid white; color: white; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+    #messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+    .msg { max-width: 80%; padding: 8px 12px; border-radius: 10px; position: relative; word-wrap: break-word; line-height: 1.4; }
+    .msg.mine { align-self: flex-end; background: #dcf8c6; border-top-right-radius: 0; }
+    .msg.other { align-self: flex-start; background: white; border-top-left-radius: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+    .msg .author { font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 2px; }
+    .msg .time { font-size: 10px; color: #888; text-align: right; margin-top: 4px; }
+    .msg img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
+    #input-area { background: #f0f0f0; padding: 10px; display: flex; gap: 8px; align-items: center; }
+    #message-input { flex: 1; padding: 10px 14px; border: 1px solid #ccc; border-radius: 20px; font-size: 15px; outline: none; }
+    #send-btn, #photo-btn { background: #075e54; color: white; border: none; padding: 10px 14px; border-radius: 50%; cursor: pointer; font-size: 16px; }
+    #file-input { display: none; }
+  </style>
+</head>
+<body>
+
+  <div id="auth-screen">
+    <form id="auth-form">
+      <h2>Семейный Чат</h2>
+      <input type="text" id="username-input" placeholder="Ваше имя (напр. Папа)" required>
+      <button type="submit">Войти в чат</button>
+    </form>
+  </div>
+
+  <div id="chat-screen">
+    <header>
+      <h1 id="user-display">Семейный Чат</h1>
+      <button id="logout-btn">Выйти</button>
+    </header>
+    <div id="messages"></div>
+    <div id="input-area">
+      <button id="photo-btn" type="button">📷</button>
+      <input type="file" id="file-input" accept="image/*">
+      <input type="text" id="message-input" placeholder="Сообщение..." autocomplete="off">
+      <button id="send-btn" type="button">➤</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let currentUser = '';
+
+    const authScreen = document.getElementById('auth-screen');
+    const chatScreen = document.getElementById('chat-screen');
+    const authForm = document.getElementById('auth-form');
+    const usernameInput = document.getElementById('username-input');
+    const messagesDiv = document.getElementById('messages');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const photoBtn = document.getElementById('photo-btn');
+    const fileInput = document.getElementById('file-input');
+
+    fetch('/api/me')
+      .then(res => res.json())
+      .then(data => {
+        if (data.loggedIn) {
+          currentUser = data.username;
+          showChat();
+        }
+      });
+
+    authForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = usernameInput.value.trim();
+      if (!username) return;
+
+      fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          currentUser = data.username;
+          showChat();
+        }
+      });
+    });
+
+    logoutBtn.addEventListener('click', () => {
+      fetch('/api/logout', { method: 'POST' }).then(() => location.reload());
+    });
+
+    function showChat() {
+      authScreen.style.display = 'none';
+      chatScreen.style.display = 'flex';
+      document.getElementById('user-display').innerText = `Вы: ${currentUser}`;
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+
+    function sendMessage() {
+      const text = messageInput.value.trim();
+      if (!text) return;
+      socket.emit('chat message', { type: 'text', text });
+      messageInput.value = '';
+    }
+
+    photoBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        socket.emit('chat message', { type: 'image', text: evt.target.result });
+        fileInput.value = '';
+      };
+      reader.readAsDataURL(file);
+    });
+
+    socket.on('chat history', (history) => {
+      messagesDiv.innerHTML = '';
+      history.forEach(appendMessage);
+      scrollToBottom();
+    });
+
+    socket.on('chat message', (msg) => {
+      appendMessage(msg);
+      scrollToBottom();
+    });
+
+    function appendMessage(msg) {
+      const isMine = msg.user === currentUser;
+      const msgEl = document.createElement('div');
+      msgEl.className = `msg ${isMine ? 'mine' : 'other'}`;
+
+      const timeStr = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      let contentHtml = '';
+      if (msg.type === 'image') {
+        contentHtml = `<img src="${msg.text}" alt="Фото">`;
+      } else {
+        contentHtml = `<div>${escapeHtml(msg.text)}</div>`;
+      }
+
+      msgEl.innerHTML = `
+        ${!isMine ? `<div class="author">${escapeHtml(msg.user)}</div>` : ''}
+        ${contentHtml}
+        <div class="time">${timeStr}</div>
+      `;
+
+      messagesDiv.appendChild(msgEl);
+    }
+
+    function scrollToBottom() {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+  </script>
+</body>
+</html>
