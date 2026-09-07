@@ -12,10 +12,12 @@
     #auth-form h2 { font-size: 20px; text-align: center; color: #075e54; }
     #auth-form input { padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; outline: none; }
     #auth-form button { padding: 12px; background: #25d366; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
-    #chat-screen { display: none; flex-direction: column; height: 100vh; }
+    #chat-screen { display: none; flex-direction: column; height: 100vh; position: relative; }
     header { background: #075e54; color: white; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    header h1 { font-size: 18px; }
-    #logout-btn { background: transparent; border: 1px solid white; color: white; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+    header h1 { font-size: 16px; }
+    .header-btns { display: flex; gap: 8px; align-items: center; }
+    .call-btn { background: #25d366; border: none; color: white; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+    #logout-btn { background: transparent; border: 1px solid white; color: white; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
     #messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
     .msg { max-width: 80%; padding: 8px 12px; border-radius: 10px; position: relative; word-wrap: break-word; line-height: 1.4; }
     .msg.mine { align-self: flex-end; background: #dcf8c6; border-top-right-radius: 0; }
@@ -27,6 +29,16 @@
     #message-input { flex: 1; padding: 10px 14px; border: 1px solid #ccc; border-radius: 20px; font-size: 15px; outline: none; }
     #send-btn, #photo-btn { background: #075e54; color: white; border: none; padding: 10px 14px; border-radius: 50%; cursor: pointer; font-size: 16px; }
     #file-input { display: none; }
+
+    /* Окно звонка */
+    #call-overlay { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; align-items: center; justify-content: center; color: white; }
+    #video-container { width: 100%; max-width: 480px; height: 60vh; position: relative; background: #222; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+    video { width: 100%; height: 100%; object-fit: cover; }
+    #local-video { width: 100px; height: 150px; position: absolute; bottom: 10px; right: 10px; border: 2px solid white; border-radius: 8px; z-index: 2; background: #000; }
+    .call-controls { margin-top: 20px; display: flex; gap: 15px; }
+    .call-action-btn { padding: 12px 24px; border-radius: 25px; border: none; font-weight: bold; font-size: 16px; cursor: pointer; }
+    #accept-call-btn { background: #25d366; color: white; }
+    #end-call-btn { background: #ff3b30; color: white; }
   </style>
 </head>
 <body>
@@ -42,7 +54,11 @@
   <div id="chat-screen">
     <header>
       <h1 id="user-display">Семейный Чат</h1>
-      <button id="logout-btn">Выйти</button>
+      <div class="header-btns">
+        <button class="call-btn" id="audio-call-btn">📞</button>
+        <button class="call-btn" id="video-call-btn">📹</button>
+        <button id="logout-btn">Выйти</button>
+      </div>
     </header>
     <div id="messages"></div>
     <div id="input-area">
@@ -50,6 +66,19 @@
       <input type="file" id="file-input" accept="image/*">
       <input type="text" id="message-input" placeholder="Сообщение..." autocomplete="off">
       <button id="send-btn" type="button">➤</button>
+    </div>
+
+    <!-- Оверлей Звонка -->
+    <div id="call-overlay">
+      <h3 id="call-status">Входящий вызов...</h3>
+      <div id="video-container">
+        <video id="remote-video" autoplay playsinline></video>
+        <video id="local-video" autoplay playsinline muted></video>
+      </div>
+      <div class="call-controls">
+        <button class="call-action-btn" id="accept-call-btn">Ответить</button>
+        <button class="call-action-btn" id="end-call-btn">Завершить</button>
+      </div>
     </div>
   </div>
 
@@ -68,6 +97,22 @@
     const logoutBtn = document.getElementById('logout-btn');
     const photoBtn = document.getElementById('photo-btn');
     const fileInput = document.getElementById('file-input');
+
+    // Звонки
+    const callOverlay = document.getElementById('call-overlay');
+    const callStatus = document.getElementById('call-status');
+    const acceptCallBtn = document.getElementById('accept-call-btn');
+    const endCallBtn = document.getElementById('end-call-btn');
+    const localVideo = document.getElementById('local-video');
+    const remoteVideo = document.getElementById('remote-video');
+
+    let localStream;
+    let peerConnection;
+    let incomingOffer;
+
+    const rtcConfig = {
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    };
 
     if (currentUser) {
       showChat();
@@ -102,6 +147,7 @@
       authScreen.style.display = 'none';
       chatScreen.style.display = 'flex';
       document.getElementById('user-display').innerText = `Вы: ${currentUser}`;
+      socket.emit('register user', currentUser);
     }
 
     sendBtn.addEventListener('click', sendMessage);
@@ -120,7 +166,6 @@
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
-
       resizeAndSendImage(file);
       fileInput.value = '';
     });
@@ -138,15 +183,9 @@
           let height = img.height;
 
           if (width > height) {
-            if (width > maxDimension) {
-              height *= maxDimension / width;
-              width = maxDimension;
-            }
+            if (width > maxDimension) { height *= maxDimension / width; width = maxDimension; }
           } else {
-            if (height > maxDimension) {
-              width *= maxDimension / height;
-              height = maxDimension;
-            }
+            if (height > maxDimension) { width *= maxDimension / height; height = maxDimension; }
           }
 
           canvas.width = width;
@@ -160,6 +199,100 @@
       };
     }
 
+    // --- Логика Аудио/Видео Звонков ---
+    document.getElementById('audio-call-btn').addEventListener('click', () => startCall(false));
+    document.getElementById('video-call-btn').addEventListener('click', () => startCall(true));
+
+    async function startCall(isVideo) {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideo });
+        localVideo.srcObject = localStream;
+        callOverlay.style.display = 'flex';
+        acceptCallBtn.style.display = 'none';
+        callStatus.innerText = 'Вызов...';
+
+        peerConnection = new RTCPeerConnection(rtcConfig);
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+        peerConnection.ontrack = (event) => {
+          remoteVideo.srcObject = event.streams[0];
+        };
+
+        peerConnection.onicecandidate = (event) => {
+          if (event.candidate) {
+            socket.emit('ice-candidate', { candidate: event.candidate });
+          }
+        };
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        socket.emit('call-user', { from: currentUser, offer, isVideo });
+      } catch (err) {
+        alert('Ошибка доступа к микрофону/камере: ' + err.message);
+      }
+    }
+
+    socket.on('incoming-call', async (data) => {
+      if (data.from === currentUser) return;
+      incomingOffer = data.offer;
+      callOverlay.style.display = 'flex';
+      acceptCallBtn.style.display = 'inline-block';
+      callStatus.innerText = `Входящий ${data.isVideo ? 'видео' : 'аудио'} звонок от ${data.from}`;
+    });
+
+    acceptCallBtn.addEventListener('click', async () => {
+      acceptCallBtn.style.display = 'none';
+      callStatus.innerText = 'Соединение...';
+
+      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      localVideo.srcObject = localStream;
+
+      peerConnection = new RTCPeerConnection(rtcConfig);
+      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+      peerConnection.ontrack = (event) => {
+        remoteVideo.srcObject = event.streams[0];
+      };
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit('ice-candidate', { candidate: event.candidate });
+        }
+      };
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+
+      socket.emit('answer-call', { answer });
+    });
+
+    socket.on('call-answered', async (data) => {
+      callStatus.innerText = 'Разговор...';
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    });
+
+    socket.on('ice-candidate', async (candidate) => {
+      if (peerConnection) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      }
+    });
+
+    endCallBtn.addEventListener('click', () => {
+      socket.emit('end-call');
+      closeCall();
+    });
+
+    socket.on('call-ended', closeCall);
+
+    function closeCall() {
+      callOverlay.style.display = 'none';
+      if (peerConnection) peerConnection.close();
+      if (localStream) localStream.getTracks().forEach(track => track.stop());
+    }
+
+    // История и сообщения
     socket.on('chat history', (history) => {
       messagesDiv.innerHTML = '';
       history.forEach(appendMessage);
