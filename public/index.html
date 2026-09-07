@@ -113,12 +113,27 @@
     let incomingOffer;
     let isVideoCall = false;
 
-    const rtcConfig = {
+        const rtcConfig = {
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun.relay.metered.ca:80' },
+        {
+          urls: 'turn:global.relay.metered.ca:80',
+          username: 'ba2a3b043d9b4b0a316c0250',
+          credential: 'S7dD3vT/3jITh445'
+        },
+        {
+          urls: 'turn:global.relay.metered.ca:443',
+          username: 'ba2a3b043d9b4b0a316c0250',
+          credential: 'S7dD3vT/3jITh445'
+        },
+        {
+          urls: 'turn:global.relay.metered.ca:443?transport=tcp',
+          username: 'ba2a3b043d9b4b0a316c0250',
+          credential: 'S7dD3vT/3jITh445'
+        }
       ]
     };
+
 
     if (currentUser) {
       showChat();
