@@ -22,7 +22,7 @@
     .msg.other { align-self: flex-start; background: white; border-top-left-radius: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
     .msg .author { font-size: 11px; font-weight: bold; color: #075e54; margin-bottom: 2px; }
     .msg .time { font-size: 10px; color: #888; text-align: right; margin-top: 4px; }
-    .msg img { max-width: 100%; border-radius: 8px; margin-top: 5px; }
+    .msg img { max-width: 100%; border-radius: 8px; margin-top: 5px; display: block; }
     #input-area { background: #f0f0f0; padding: 10px; display: flex; gap: 8px; align-items: center; }
     #message-input { flex: 1; padding: 10px 14px; border: 1px solid #ccc; border-radius: 20px; font-size: 15px; outline: none; }
     #send-btn, #photo-btn { background: #075e54; color: white; border: none; padding: 10px 14px; border-radius: 50%; cursor: pointer; font-size: 16px; }
@@ -34,7 +34,7 @@
   <div id="auth-screen">
     <form id="auth-form">
       <h2>Семейный Чат</h2>
-      <input type="text" id="username-input" placeholder="Ваше имя (напр. Папа)" required>
+      <input type="text" id="username-input" placeholder="Ваше имя" required>
       <button type="submit">Войти в чат</button>
     </form>
   </div>
@@ -56,7 +56,7 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    let currentUser = '';
+    let currentUser = localStorage.getItem('chat_username') || '';
 
     const authScreen = document.getElementById('auth-screen');
     const chatScreen = document.getElementById('chat-screen');
@@ -69,14 +69,9 @@
     const photoBtn = document.getElementById('photo-btn');
     const fileInput = document.getElementById('file-input');
 
-    fetch('/api/me')
-      .then(res => res.json())
-      .then(data => {
-        if (data.loggedIn) {
-          currentUser = data.username;
-          showChat();
-        }
-      });
+    if (currentUser) {
+      showChat();
+    }
 
     authForm.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -92,12 +87,14 @@
       .then(data => {
         if (data.success) {
           currentUser = data.username;
+          localStorage.setItem('chat_username', currentUser);
           showChat();
         }
       });
     });
 
     logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('chat_username');
       fetch('/api/logout', { method: 'POST' }).then(() => location.reload());
     });
 
@@ -115,7 +112,7 @@
     function sendMessage() {
       const text = messageInput.value.trim();
       if (!text) return;
-      socket.emit('chat message', { type: 'text', text });
+      socket.emit('chat message', { type: 'text', text: text, user: currentUser });
       messageInput.value = '';
     }
 
@@ -124,13 +121,44 @@
       const file = e.target.files[0];
       if (!file) return;
 
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        socket.emit('chat message', { type: 'image', text: evt.target.result });
-        fileInput.value = '';
-      };
-      reader.readAsDataURL(file);
+      resizeAndSendImage(file);
+      fileInput.value = '';
     });
+
+    function resizeAndSendImage(file) {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxDimension = 1280;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxDimension) {
+              height *= maxDimension / width;
+              width = maxDimension;
+            }
+          } else {
+            if (height > maxDimension) {
+              width *= maxDimension / height;
+              height = maxDimension;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          socket.emit('chat message', { type: 'image', text: compressedDataUrl, user: currentUser });
+        };
+      };
+    }
 
     socket.on('chat history', (history) => {
       messagesDiv.innerHTML = '';
