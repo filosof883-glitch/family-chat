@@ -208,10 +208,10 @@
       flex: 1;
       overflow-y: auto;
       overflow-x: visible;
-      padding: 50px 16px 16px 16px; /* Запас сверху для панелей реакций */
+      padding: 60px 16px 16px 16px;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 20px;
       scroll-behavior: smooth;
     }
 
@@ -223,7 +223,7 @@
       line-height: 1.4;
       word-wrap: break-word;
       position: relative;
-      overflow: visible;
+      overflow: visible !important;
     }
 
     .message.own {
@@ -265,48 +265,52 @@
       flex-wrap: wrap;
       gap: 4px;
       margin-top: 6px;
+      position: relative;
+      z-index: 10;
     }
 
     .reaction-badge {
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 12px;
-      padding: 2px 6px;
-      font-size: 12px;
+      padding: 2px 8px;
+      font-size: 13px;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 3px;
+      gap: 4px;
+      user-select: none;
     }
 
     .reaction-badge.active {
-      background: rgba(168, 85, 247, 0.4);
-      border-color: rgba(168, 85, 247, 0.8);
+      background: rgba(168, 85, 247, 0.5);
+      border-color: rgba(168, 85, 247, 0.9);
     }
 
     .add-reaction-btn {
       background: rgba(255, 255, 255, 0.15);
-      border: none;
+      border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 12px;
-      padding: 2px 6px;
+      padding: 2px 8px;
       font-size: 12px;
       cursor: pointer;
       color: rgba(255, 255, 255, 0.9);
+      user-select: none;
     }
 
     .reaction-picker {
       position: absolute;
-      top: -45px;
+      top: -50px;
       right: 0;
-      background: rgba(15, 23, 42, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      backdrop-filter: blur(15px);
-      border-radius: 20px;
-      padding: 6px 10px;
+      background: rgba(15, 23, 42, 0.98);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      backdrop-filter: blur(20px);
+      border-radius: 24px;
+      padding: 6px 12px;
       display: none;
-      gap: 8px;
-      z-index: 90;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+      gap: 10px;
+      z-index: 999;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.6);
     }
 
     .message.other .reaction-picker {
@@ -315,17 +319,18 @@
     }
 
     .reaction-picker.open {
-      display: flex;
+      display: flex !important;
     }
 
     .reaction-option {
-      font-size: 18px;
+      font-size: 20px;
       cursor: pointer;
-      transition: transform 0.1s;
+      transition: transform 0.15s ease;
+      user-select: none;
     }
 
-    .reaction-option:hover {
-      transform: scale(1.3);
+    .reaction-option:hover, .reaction-option:active {
+      transform: scale(1.35);
     }
 
     #typing-indicator {
@@ -533,6 +538,7 @@
     let currentRoomId = 'general';
     let allUsers = [];
     let typingTimeout = null;
+    let localMessagesMap = new Map();
 
     const authScreen = document.getElementById('auth-screen');
     const chatScreen = document.getElementById('chat-screen');
@@ -666,6 +672,7 @@
       currentChatName.innerText = roomTitle;
       chatSubtitle.innerText = subtitle;
       messagesDiv.innerHTML = '';
+      localMessagesMap.clear();
       typingIndicator.style.display = 'none';
       emojiPickerPanel.classList.remove('open');
       sidebar.classList.remove('open');
@@ -821,8 +828,12 @@
     socket.on('chat history', ({ roomId, messages }) => {
       if (roomId === currentRoomId) {
         messagesDiv.innerHTML = '';
+        localMessagesMap.clear();
         if (Array.isArray(messages)) {
-          messages.forEach(appendMessage);
+          messages.forEach(msg => {
+            localMessagesMap.set(String(msg.id), msg);
+            appendMessage(msg);
+          });
         }
         scrollToBottom(false);
       }
@@ -830,6 +841,7 @@
 
     socket.on('chat message', (msg) => {
       if (msg.roomId === currentRoomId) {
+        localMessagesMap.set(String(msg.id), msg);
         appendMessage(msg);
         scrollToBottom(true);
       }
@@ -847,23 +859,46 @@
 
     socket.on('delete message', ({ roomId, messageId }) => {
       if (roomId === currentRoomId) {
+        localMessagesMap.delete(String(messageId));
         const el = document.querySelector(`.message[data-id="${messageId}"]`);
         if (el) el.remove();
       }
     });
 
     window.toggleReaction = function(messageId, emoji) {
-      socket.emit('toggle reaction', { roomId: currentRoomId, messageId: String(messageId), emoji, user: currentUser });
+      const msgIdStr = String(messageId);
+      socket.emit('toggle reaction', { roomId: currentRoomId, messageId: msgIdStr, emoji, user: currentUser });
+
+      const msg = localMessagesMap.get(msgIdStr);
+      if (msg) {
+        msg.reactions = msg.reactions || {};
+        const users = msg.reactions[emoji] || [];
+        const idx = users.indexOf(currentUser);
+        if (idx > -1) {
+          users.splice(idx, 1);
+        } else {
+          users.push(currentUser);
+        }
+        msg.reactions[emoji] = users;
+        
+        const msgEl = document.querySelector(`.message[data-id="${msgIdStr}"]`);
+        if (msgEl) {
+          const reactionsBar = msgEl.querySelector('.reactions-bar');
+          if (reactionsBar) renderReactionsBar(reactionsBar, msgIdStr, msg.reactions);
+        }
+      }
     };
 
     socket.on('update reaction', ({ roomId, messageId, reactions }) => {
       if (roomId === currentRoomId) {
-        const msgEl = document.querySelector(`.message[data-id="${messageId}"]`);
+        const msgIdStr = String(messageId);
+        const msg = localMessagesMap.get(msgIdStr);
+        if (msg) msg.reactions = reactions;
+
+        const msgEl = document.querySelector(`.message[data-id="${msgIdStr}"]`);
         if (msgEl) {
           const reactionsBar = msgEl.querySelector('.reactions-bar');
-          if (reactionsBar) {
-            renderReactionsBar(reactionsBar, messageId, reactions);
-          }
+          if (reactionsBar) renderReactionsBar(reactionsBar, msgIdStr, reactions);
         }
       }
     });
@@ -906,10 +941,11 @@
       const isOwn = msg.user === currentUser;
       const msgEl = document.createElement('div');
       msgEl.classList.add('message', isOwn ? 'own' : 'other');
-      if (msg.id) msgEl.setAttribute('data-id', msg.id);
+      const msgIdStr = String(msg.id || Date.now());
+      msgEl.setAttribute('data-id', msgIdStr);
 
       const time = (msg.timestamp ? new Date(msg.timestamp) : new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const delBtn = (isOwn && msg.id) ? `<button class="delete-btn" onclick="deleteMessage('${msg.id}')">🗑️</button>` : '';
+      const delBtn = (isOwn && msg.id) ? `<button class="delete-btn" onclick="deleteMessage('${msgIdStr}')">🗑️</button>` : '';
 
       let content = `<div class="message-header"><span class="message-user">${escapeHtml(msg.user)}</span>${delBtn}</div>`;
       content += msg.type === 'image' ? `<img src="${msg.image}" class="message-img" onload="scrollToBottom(true)" />` : `<div>${escapeHtml(msg.text)}</div>`;
@@ -917,7 +953,7 @@
 
       content += `<div class="reaction-picker">`;
       REACTION_OPTIONS.forEach(emoji => {
-        content += `<span class="reaction-option" onclick="toggleReaction('${msg.id}', '${emoji}'); this.parentElement.classList.remove('open');">${emoji}</span>`;
+        content += `<span class="reaction-option" onclick="toggleReaction('${msgIdStr}', '${emoji}'); this.parentElement.classList.remove('open');">${emoji}</span>`;
       });
       content += `</div>`;
 
@@ -926,10 +962,8 @@
       msgEl.innerHTML = content;
       messagesDiv.appendChild(msgEl);
 
-      if (msg.id) {
-        const reactionsBar = msgEl.querySelector('.reactions-bar');
-        renderReactionsBar(reactionsBar, msg.id, msg.reactions || {});
-      }
+      const reactionsBar = msgEl.querySelector('.reactions-bar');
+      renderReactionsBar(reactionsBar, msgIdStr, msg.reactions || {});
     }
 
     document.addEventListener('click', (e) => {
@@ -938,7 +972,7 @@
       }
     });
 
-    function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+    function escapeHtml(text) { return text ? text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : ''; }
 
     // --- WEBRTC ---
     const callOverlay = document.getElementById('call-overlay');
