@@ -141,6 +141,7 @@ io.on('connection', (socket) => {
     }
   });
 
+  // --- ИНДИКАТОР НАБОРА ТЕКСТА ---
   socket.on('typing', ({ roomId, username, isTyping }) => {
     socket.to(roomId).emit('typing', { roomId, username, isTyping });
   });
@@ -177,7 +178,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // --- ТОЧЕЧНЫЙ WEBRTC SIGNALING ---
+  // --- АДРЕСНЫЙ WEBRTC SIGNALING ---
   socket.on('call-user', (data) => {
     const { targetUser, offer, isVideo } = data;
     const targetSocketId = getSocketIdByUsername(targetUser);
