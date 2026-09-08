@@ -86,6 +86,10 @@ function sendUserRooms(username, socket) {
   socket.emit('user rooms', userGroups);
 }
 
+function getSocketIdByUsername(username) {
+  return Object.keys(activeSockets).find(key => activeSockets[key] === username);
+}
+
 io.on('connection', (socket) => {
   console.log('Подключился сокет:', socket.id);
 
@@ -137,7 +141,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // --- ИНДИКАТОР НАБОРА ТЕКСТА ---
   socket.on('typing', ({ roomId, username, isTyping }) => {
     socket.to(roomId).emit('typing', { roomId, username, isTyping });
   });
@@ -174,10 +177,42 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('call-user', (data) => socket.broadcast.emit('incoming-call', data));
-  socket.on('make-answer', (data) => socket.broadcast.emit('call-answered', data));
-  socket.on('ice-candidate', (data) => socket.broadcast.emit('ice-candidate', data));
-  socket.on('end-call', () => socket.broadcast.emit('call-ended'));
+  // --- ТОЧЕЧНЫЙ WEBRTC SIGNALING ---
+  socket.on('call-user', (data) => {
+    const { targetUser, offer, isVideo } = data;
+    const targetSocketId = getSocketIdByUsername(targetUser);
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('incoming-call', {
+        offer,
+        isVideo,
+        from: activeSockets[socket.id],
+        fromSocketId: socket.id
+      });
+    }
+  });
+
+  socket.on('make-answer', (data) => {
+    const { targetSocketId, answer } = data;
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call-answered', { answer, fromSocketId: socket.id });
+    }
+  });
+
+  socket.on('ice-candidate', (data) => {
+    const { targetSocketId, candidate } = data;
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('ice-candidate', { candidate });
+    }
+  });
+
+  socket.on('end-call', (data) => {
+    const { targetSocketId } = data || {};
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call-ended');
+    } else {
+      socket.broadcast.emit('call-ended');
+    }
+  });
 
   socket.on('disconnect', () => {
     delete activeSockets[socket.id];
