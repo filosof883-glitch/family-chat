@@ -6,7 +6,7 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  maxHttpBufferSize: 1e7 // 10MB для картинок
+  maxHttpBufferSize: 1e7 // 10MB для фото
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -20,16 +20,16 @@ const groups = []; // [{ id, name, members }]
 
 io.on('connection', (socket) => {
   socket.on('register user', (username) => {
+    if (!username) return;
     socket.username = username;
     users.set(socket.id, { username, online: true });
     
-    // Рассылаем список пользователей
     broadcastUsers();
-    // Отправляем группы пользователя
     sendUserGroups(socket);
   });
 
   socket.on('join room', (roomId) => {
+    if (!roomId) return;
     socket.leaveAll();
     socket.join(roomId);
     
@@ -44,7 +44,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chat message', (data) => {
+    if (!data || !data.roomId) return;
     const { roomId, user, text, image, type } = data;
+    
     const msg = {
       id: String(Date.now() + Math.random().toString(36).substr(2, 5)),
       roomId,
@@ -96,6 +98,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('create group', ({ groupName, members }) => {
+    if (!groupName || !Array.isArray(members)) return;
+    
     const groupId = 'group_' + Date.now();
     const allMembers = Array.from(new Set([...members, socket.username]));
     const newGroup = { id: groupId, name: groupName, members: allMembers };
@@ -103,11 +107,13 @@ io.on('connection', (socket) => {
     groups.push(newGroup);
     roomsMessages[groupId] = [];
 
-    // Уведомляем участников
-    for (let [sId, u] of users.entries()) {
+    // Рассылаем обновление списка групп всем подключенным пользователям
+    for (const [sId, u] of users.entries()) {
       if (allMembers.includes(u.username)) {
-        const userSocket = io.sockets.sockets.get(sId);
-        if (userSocket) sendUserGroups(userSocket);
+        const targetSocket = io.sockets.sockets.get(sId);
+        if (targetSocket) {
+          sendUserGroups(targetSocket);
+        }
       }
     }
   });
@@ -118,9 +124,9 @@ io.on('connection', (socket) => {
 
   // --- WEBRTC ЗВОНКИ ---
   socket.on('call-user', ({ targetUser, offer, isVideo }) => {
-    const targetSocketEntry = Array.from(users.entries()).find(([_, u]) => u.username === targetUser);
-    if (targetSocketEntry) {
-      io.to(targetSocketEntry[0]).emit('incoming-call', {
+    const targetEntry = Array.from(users.entries()).find(([_, u]) => u.username === targetUser);
+    if (targetEntry) {
+      io.to(targetEntry[0]).emit('incoming-call', {
         from: socket.username,
         fromSocketId: socket.id,
         offer,
@@ -130,10 +136,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('make-answer', ({ targetSocketId, answer }) => {
-    io.to(targetSocketId).emit('call-answered', {
-      fromSocketId: socket.id,
-      answer
-    });
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('call-answered', {
+        fromSocketId: socket.id,
+        answer
+      });
+    }
   });
 
   socket.on('ice-candidate', ({ targetSocketId, candidate }) => {
@@ -154,20 +162,25 @@ io.on('connection', (socket) => {
   });
 
   function broadcastUsers() {
-    const userList = Array.from(new Set(Array.from(users.values()).map(u => u.username)))
-      .map(username => {
-        const isOnline = Array.from(users.values()).some(u => u.username === username && u.online);
-        return { username, online: isOnline };
-      });
+    const activeUsernames = Array.from(users.values()).map(u => u.username);
+    const uniqueUsernames = Array.from(new Set(activeUsernames));
+    
+    const userList = uniqueUsernames.map(username => ({
+      username,
+      online: true
+    }));
+
     io.emit('users list', userList);
   }
 
   function sendUserGroups(userSocket) {
-    if (!userSocket.username) return;
+    if (!userSocket || !userSocket.username) return;
     const userGroups = groups.filter(g => g.members.includes(userSocket.username));
     userSocket.emit('user rooms', userGroups);
   }
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
