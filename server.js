@@ -7,9 +7,9 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 
-// Увеличиваем лимит размера сообщений для сокетов
+// Увеличиваем лимит размера сообщений для сокетов до 50MB
 const io = new Server(server, {
-  maxHttpBufferSize: 50 * 1024 * 1024 // 50MB
+  maxHttpBufferSize: 50 * 1024 * 1024
 });
 
 app.use(express.json({ limit: '50mb' }));
@@ -34,7 +34,7 @@ if (fs.existsSync(DATA_FILE)) {
 // Функция сохранения сообщений в файл
 function saveMessages() {
   try {
-    // Храним последние 200 сообщений, чтобы файл не разрастался бесконечно
+    // Храним последние 200 сообщений
     if (messages.length > 200) {
       messages = messages.slice(-200);
     }
@@ -57,9 +57,10 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chat message', (data) => {
-    // Добавляем timestamp к сообщению
+    // Добавляем уникальный ID и метку времени к сообщению
     const messageData = {
       ...data,
+      id: Date.now().toString(36) + Math.random().toString(36).substring(2, 9),
       timestamp: new Date().toISOString()
     };
 
@@ -67,6 +68,16 @@ io.on('connection', (socket) => {
     saveMessages(); // Сохраняем на диск
 
     io.emit('chat message', messageData);
+  });
+
+  // НОВОЕ: Обработчик удаления сообщения
+  socket.on('delete message', (messageId) => {
+    // Удаляем сообщение из массива истории
+    messages = messages.filter(msg => msg.id !== messageId);
+    saveMessages(); // Обновляем файл
+    
+    // Рассылаем всем клиентам команду убрать сообщение с экрана
+    io.emit('delete message', messageId);
   });
 
   // Логика звонков WebRTC
