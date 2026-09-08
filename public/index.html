@@ -257,6 +257,17 @@
     .message-time { font-size: 10px; opacity: 0.6; text-align: right; margin-top: 4px; }
     .message-img { width: 100%; max-width: 260px; border-radius: 12px; margin-top: 4px; }
 
+    /* --- СТИЛИ ДЛЯ ИНДИКАТОРА НАБОРА ТЕКСТА --- */
+    #typing-indicator {
+      display: none;
+      align-self: flex-start;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+      font-style: italic;
+      padding: 4px 8px;
+      margin-bottom: 4px;
+    }
+
     #input-area {
       flex-shrink: 0;
       padding: 10px 12px calc(10px + env(safe-area-inset-bottom)) 12px;
@@ -373,6 +384,7 @@
       </div>
 
       <div id="messages"></div>
+      <div id="typing-indicator"></div>
 
       <div id="input-area">
         <button class="icon-btn" id="photo-btn" type="button">📷</button>
@@ -415,6 +427,7 @@
     let currentUser = localStorage.getItem('chat_username') || '';
     let currentRoomId = 'general';
     let allUsers = [];
+    let typingTimeout = null;
 
     const authScreen = document.getElementById('auth-screen');
     const chatScreen = document.getElementById('chat-screen');
@@ -425,6 +438,7 @@
     const sendBtn = document.getElementById('send-btn');
     const photoBtn = document.getElementById('photo-btn');
     const fileInput = document.getElementById('file-input');
+    const typingIndicator = document.getElementById('typing-indicator');
 
     const sidebar = document.getElementById('sidebar');
     const menuBtn = document.getElementById('menu-btn');
@@ -475,6 +489,7 @@
       currentChatName.innerText = roomTitle;
       chatSubtitle.innerText = subtitle;
       messagesDiv.innerHTML = '';
+      typingIndicator.style.display = 'none';
       sidebar.classList.remove('open');
 
       document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
@@ -484,6 +499,28 @@
     generalChatBtn.addEventListener('click', () => {
       generalChatBtn.classList.add('active');
       switchRoom('general', 'Общий чат', 'Чат для всех');
+    });
+
+    // --- ЛОГИКА ИНДИКАТОРА НАБОРА ТЕКСТА ---
+    messageInput.addEventListener('input', () => {
+      socket.emit('typing', { roomId: currentRoomId, username: currentUser, isTyping: true });
+
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        socket.emit('typing', { roomId: currentRoomId, username: currentUser, isTyping: false });
+      }, 2000);
+    });
+
+    socket.on('typing', ({ roomId, username, isTyping }) => {
+      if (roomId === currentRoomId && username !== currentUser) {
+        if (isTyping) {
+          typingIndicator.innerText = `${username} печатает...`;
+          typingIndicator.style.display = 'block';
+          scrollToBottom();
+        } else {
+          typingIndicator.style.display = 'none';
+        }
+      }
     });
 
     socket.on('users list', (users) => {
@@ -560,6 +597,9 @@
     function sendMessage() {
       const text = messageInput.value.trim();
       if (text) {
+        clearTimeout(typingTimeout);
+        socket.emit('typing', { roomId: currentRoomId, username: currentUser, isTyping: false });
+
         socket.emit('chat message', {
           roomId: currentRoomId,
           user: currentUser,
