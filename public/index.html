@@ -103,7 +103,7 @@
 
     #header {
       padding: 12px 16px;
-      background: rgba(15, 23, 42, 0.85);
+      background: rgba(15, 23, 42, 0.95);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       display: flex;
       justify-content: space-between;
@@ -149,7 +149,7 @@
       top: 0; left: -100%;
       width: 280px;
       height: 100%;
-      background: rgba(15, 23, 42, 0.95);
+      background: rgba(15, 23, 42, 0.98);
       backdrop-filter: blur(25px);
       -webkit-backdrop-filter: blur(25px);
       border-right: 1px solid rgba(255, 255, 255, 0.15);
@@ -207,11 +207,10 @@
     #messages {
       flex: 1;
       overflow-y: auto;
-      overflow-x: visible;
-      padding: 60px 16px 16px 16px;
+      padding: 20px 16px 30px 16px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 24px;
       scroll-behavior: smooth;
     }
 
@@ -223,7 +222,6 @@
       line-height: 1.4;
       word-wrap: break-word;
       position: relative;
-      overflow: visible !important;
     }
 
     .message.own {
@@ -265,16 +263,15 @@
       flex-wrap: wrap;
       gap: 4px;
       margin-top: 6px;
-      position: relative;
-      z-index: 10;
+      align-items: center;
     }
 
     .reaction-badge {
-      background: rgba(0, 0, 0, 0.4);
+      background: rgba(0, 0, 0, 0.35);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 12px;
-      padding: 2px 8px;
-      font-size: 13px;
+      padding: 3px 8px;
+      font-size: 12px;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -283,15 +280,15 @@
     }
 
     .reaction-badge.active {
-      background: rgba(168, 85, 247, 0.5);
-      border-color: rgba(168, 85, 247, 0.9);
+      background: rgba(168, 85, 247, 0.6);
+      border-color: rgba(236, 72, 153, 0.8);
     }
 
     .add-reaction-btn {
       background: rgba(255, 255, 255, 0.15);
       border: 1px solid rgba(255, 255, 255, 0.2);
       border-radius: 12px;
-      padding: 2px 8px;
+      padding: 3px 8px;
       font-size: 12px;
       cursor: pointer;
       color: rgba(255, 255, 255, 0.9);
@@ -300,17 +297,17 @@
 
     .reaction-picker {
       position: absolute;
-      top: -50px;
+      bottom: -45px;
       right: 0;
       background: rgba(15, 23, 42, 0.98);
-      border: 1px solid rgba(255, 255, 255, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.3);
       backdrop-filter: blur(20px);
-      border-radius: 24px;
-      padding: 6px 12px;
+      border-radius: 20px;
+      padding: 6px 10px;
       display: none;
       gap: 10px;
-      z-index: 999;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+      z-index: 150;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.7);
     }
 
     .message.other .reaction-picker {
@@ -329,8 +326,8 @@
       user-select: none;
     }
 
-    .reaction-option:hover, .reaction-option:active {
-      transform: scale(1.35);
+    .reaction-option:active {
+      transform: scale(1.4);
     }
 
     #typing-indicator {
@@ -346,6 +343,7 @@
     #input-container {
       position: relative;
       flex-shrink: 0;
+      z-index: 100;
     }
 
     #input-area {
@@ -390,11 +388,6 @@
     .emoji-item {
       cursor: pointer;
       user-select: none;
-      transition: transform 0.1s;
-    }
-
-    .emoji-item:hover {
-      transform: scale(1.2);
     }
 
     #group-modal {
@@ -831,7 +824,8 @@
         localMessagesMap.clear();
         if (Array.isArray(messages)) {
           messages.forEach(msg => {
-            localMessagesMap.set(String(msg.id), msg);
+            const strId = String(msg.id);
+            localMessagesMap.set(strId, msg);
             appendMessage(msg);
           });
         }
@@ -841,7 +835,8 @@
 
     socket.on('chat message', (msg) => {
       if (msg.roomId === currentRoomId) {
-        localMessagesMap.set(String(msg.id), msg);
+        const strId = String(msg.id);
+        localMessagesMap.set(strId, msg);
         appendMessage(msg);
         scrollToBottom(true);
       }
@@ -853,14 +848,15 @@
 
     window.deleteMessage = function(id) {
       if (confirm('Удалить сообщение?')) {
-        socket.emit('delete message', { roomId: currentRoomId, messageId: id });
+        socket.emit('delete message', { roomId: currentRoomId, messageId: String(id) });
       }
     };
 
     socket.on('delete message', ({ roomId, messageId }) => {
       if (roomId === currentRoomId) {
-        localMessagesMap.delete(String(messageId));
-        const el = document.querySelector(`.message[data-id="${messageId}"]`);
+        const strId = String(messageId);
+        localMessagesMap.delete(strId);
+        const el = document.querySelector(`.message[data-id="${strId}"]`);
         if (el) el.remove();
       }
     });
@@ -869,10 +865,10 @@
       const msgIdStr = String(messageId);
       socket.emit('toggle reaction', { roomId: currentRoomId, messageId: msgIdStr, emoji, user: currentUser });
 
-      const msg = localMessagesMap.get(msgIdStr);
+      let msg = localMessagesMap.get(msgIdStr);
       if (msg) {
         msg.reactions = msg.reactions || {};
-        const users = msg.reactions[emoji] || [];
+        let users = msg.reactions[emoji] || [];
         const idx = users.indexOf(currentUser);
         if (idx > -1) {
           users.splice(idx, 1);
@@ -898,7 +894,7 @@
         const msgEl = document.querySelector(`.message[data-id="${msgIdStr}"]`);
         if (msgEl) {
           const reactionsBar = msgEl.querySelector('.reactions-bar');
-          if (reactionsBar) renderReactionsBar(reactionsBar, msgIdStr, reactions);
+          if (reactionsBar) renderReactionsBar(reactionsBar, reactions || {});
         }
       }
     });
@@ -926,13 +922,11 @@
       addBtn.innerText = '😀+';
       addBtn.onclick = (e) => {
         e.stopPropagation();
+        const currentPicker = container.parentElement.querySelector('.reaction-picker');
         document.querySelectorAll('.reaction-picker').forEach(p => {
-          if (p !== container.parentElement.querySelector('.reaction-picker')) {
-            p.classList.remove('open');
-          }
+          if (p !== currentPicker) p.classList.remove('open');
         });
-        const picker = container.parentElement.querySelector('.reaction-picker');
-        if (picker) picker.classList.toggle('open');
+        if (currentPicker) currentPicker.classList.toggle('open');
       };
       container.appendChild(addBtn);
     }
@@ -951,13 +945,13 @@
       content += msg.type === 'image' ? `<img src="${msg.image}" class="message-img" onload="scrollToBottom(true)" />` : `<div>${escapeHtml(msg.text)}</div>`;
       content += `<div class="message-time">${time}</div>`;
 
+      content += `<div class="reactions-bar"></div>`;
+
       content += `<div class="reaction-picker">`;
       REACTION_OPTIONS.forEach(emoji => {
-        content += `<span class="reaction-option" onclick="toggleReaction('${msgIdStr}', '${emoji}'); this.parentElement.classList.remove('open');">${emoji}</span>`;
+        content += `<span class="reaction-option" onclick="event.stopPropagation(); toggleReaction('${msgIdStr}', '${emoji}'); this.parentElement.classList.remove('open');">${emoji}</span>`;
       });
       content += `</div>`;
-
-      content += `<div class="reactions-bar"></div>`;
 
       msgEl.innerHTML = content;
       messagesDiv.appendChild(msgEl);
@@ -967,7 +961,7 @@
     }
 
     document.addEventListener('click', (e) => {
-      if (!e.target.classList.contains('add-reaction-btn') && !e.target.classList.contains('reaction-option')) {
+      if (!e.target.closest('.add-reaction-btn') && !e.target.closest('.reaction-picker')) {
         document.querySelectorAll('.reaction-picker').forEach(p => p.classList.remove('open'));
       }
     });
