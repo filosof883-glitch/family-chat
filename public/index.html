@@ -211,6 +211,7 @@
       display: flex;
       flex-direction: column;
       gap: 12px;
+      scroll-behavior: smooth; /* Плавный скролл CSS */
     }
 
     .message {
@@ -563,6 +564,61 @@
     const EMOJI_LIST = ['😀', '😂', '😊', '😍', '🥰', '😎', '👍', '❤️', '🔥', '🎉', '🙏', '🙌', '🤔', '😅', '💩', '👏', '🙈', '🚀', '✨', '👌', '💯'];
     const REACTION_OPTIONS = ['👍', '❤️', '😂', '🔥', '😮'];
 
+    // --- Web Audio API для системных звуков ---
+    let audioCtx = null;
+
+    function initAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
+
+    function playSound(type = 'incoming') {
+      try {
+        initAudioContext();
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        const now = audioCtx.currentTime;
+
+        if (type === 'incoming') {
+          // Мягкий двоичный сигнал при получении сообщения
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(587.33, now); // D5
+          osc.frequency.exponentialRampToValueAtTime(880, now + 0.12); // A5
+          gain.gain.setValueAtTime(0.15, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+          osc.start(now);
+          osc.stop(now + 0.25);
+        } else if (type === 'outgoing') {
+          // Короткий сфокусированный клик при отправке
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(440, now); // A4
+          osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.08); // E5
+          gain.gain.setValueAtTime(0.1, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+          osc.start(now);
+          osc.stop(now + 0.12);
+        }
+      } catch (e) {
+        console.error('Ошибка воспроизведения звука:', e);
+      }
+    }
+
+    // --- Функция плавной прокрутки вниз ---
+    function scrollToBottom(smooth = true) {
+      messagesDiv.scrollTo({
+        top: messagesDiv.scrollHeight,
+        behavior: smooth ? 'smooth' : 'auto'
+      });
+    }
+
     EMOJI_LIST.forEach(emoji => {
       const span = document.createElement('span');
       span.className = 'emoji-item';
@@ -578,14 +634,12 @@
       emojiPickerPanel.classList.toggle('open');
     });
 
-    // Функция запроса разрешения на Push-уведомления
     function requestNotificationPermission() {
       if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
       }
     }
 
-    // Функция отправки системного Push-уведомления
     function sendPushNotification(title, options) {
       if ('Notification' in window && Notification.permission === 'granted') {
         if (document.hidden || !document.hasFocus()) {
@@ -619,6 +673,7 @@
     function showChat() {
       authScreen.style.display = 'none';
       chatScreen.style.display = 'flex';
+      initAudioContext();
       requestNotificationPermission();
       socket.emit('register user', currentUser);
       switchRoom('general', 'Общий чат', 'Чат для всех');
@@ -659,7 +714,7 @@
         if (isTyping) {
           typingIndicator.innerText = `${username} печатает...`;
           typingIndicator.style.display = 'block';
-          scrollToBottom();
+          scrollToBottom(true);
         } else {
           typingIndicator.style.display = 'none';
         }
@@ -751,6 +806,7 @@
           type: 'text'
         });
         messageInput.value = '';
+        playSound('outgoing');
       }
     }
 
@@ -779,6 +835,7 @@
           type: 'image'
         });
         fileInput.value = '';
+        playSound('outgoing');
       };
     });
 
@@ -788,18 +845,18 @@
         if (Array.isArray(messages)) {
           messages.forEach(appendMessage);
         }
-        scrollToBottom();
+        scrollToBottom(false);
       }
     });
 
     socket.on('chat message', (msg) => {
       if (msg.roomId === currentRoomId) {
         appendMessage(msg);
-        scrollToBottom();
+        scrollToBottom(true);
       }
 
-      // Если сообщение пришло от другого пользователя — отправляем push-уведомление
       if (msg.user !== currentUser) {
+        playSound('incoming');
         const notificationText = msg.type === 'image' ? '📷 Фотография' : msg.text;
         sendPushNotification(`Новое сообщение от ${msg.user}`, {
           body: notificationText,
@@ -877,7 +934,7 @@
       const delBtn = (isOwn && msg.id) ? `<button class="delete-btn" onclick="deleteMessage('${msg.id}')">🗑️</button>` : '';
 
       let content = `<div class="message-header"><span class="message-user">${escapeHtml(msg.user)}</span>${delBtn}</div>`;
-      content += msg.type === 'image' ? `<img src="${msg.image}" class="message-img" onload="scrollToBottom()" />` : `<div>${escapeHtml(msg.text)}</div>`;
+      content += msg.type === 'image' ? `<img src="${msg.image}" class="message-img" onload="scrollToBottom(true)" />` : `<div>${escapeHtml(msg.text)}</div>`;
       content += `<div class="message-time">${time}</div>`;
 
       content += `<div class="reaction-picker">`;
@@ -903,7 +960,6 @@
       }
     });
 
-    function scrollToBottom() { messagesDiv.scrollTop = messagesDiv.scrollHeight; }
     function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
     // --- WEBRTC БЛОК ---
@@ -968,7 +1024,6 @@
       callStatus.innerText = `Входящий вызов от ${data.from}`;
       acceptCallBtn.style.display = 'flex';
 
-      // Push-уведомление о входящем звонке
       sendPushNotification(`Входящий ${data.isVideo ? 'видеовызов' : 'аудиовызов'}`, {
         body: `Звонит ${data.from}`,
         icon: '/favicon.ico',
