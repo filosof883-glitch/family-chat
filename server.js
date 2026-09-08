@@ -1,6 +1,8 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -14,17 +16,57 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static('public'));
 
+// Путь к файлу с историей сообщений
+const DATA_FILE = path.join(__dirname, 'messages.json');
+
+// Загрузка сохраненных сообщений из файла при старте
+let messages = [];
+if (fs.existsSync(DATA_FILE)) {
+  try {
+    const data = fs.readFileSync(DATA_FILE, 'utf8');
+    messages = JSON.parse(data);
+  } catch (err) {
+    console.error('Ошибка чтения файла сообщений:', err);
+    messages = [];
+  }
+}
+
+// Функция сохранения сообщений в файл
+function saveMessages() {
+  try {
+    // Храним последние 200 сообщений, чтобы файл не разрастался бесконечно
+    if (messages.length > 200) {
+      messages = messages.slice(-200);
+    }
+    fs.writeFileSync(DATA_FILE, JSON.stringify(messages, null, 2));
+  } catch (err) {
+    console.error('Ошибка сохранения сообщений:', err);
+  }
+}
+
 let users = {};
 
 io.on('connection', (socket) => {
   console.log('Пользователь подключился:', socket.id);
+
+  // При подключении отправляем пользователю всю накопленную историю
+  socket.emit('chat history', messages);
 
   socket.on('register user', (username) => {
     users[socket.id] = username;
   });
 
   socket.on('chat message', (data) => {
-    io.emit('chat message', data);
+    // Добавляем timestamp к сообщению
+    const messageData = {
+      ...data,
+      timestamp: new Date().toISOString()
+    };
+
+    messages.push(messageData);
+    saveMessages(); // Сохраняем на диск
+
+    io.emit('chat message', messageData);
   });
 
   // Логика звонков WebRTC
