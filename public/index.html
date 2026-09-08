@@ -162,6 +162,7 @@
       line-height: 1.4;
       word-wrap: break-word;
       animation: fadeIn 0.2s ease-in-out;
+      position: relative;
     }
 
     @keyframes fadeIn {
@@ -184,10 +185,32 @@
       border-bottom-left-radius: 4px;
     }
 
+    /* НОВЫЙ СТИЛЬ: Заголовок сообщения (Имя + Кнопка удаления) */
+    .message-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 4px;
+    }
+
     .message-user {
       font-size: 11px;
       opacity: 0.7;
-      margin-bottom: 3px;
+    }
+
+    .delete-btn {
+      background: none;
+      border: none;
+      color: rgba(255, 255, 255, 0.6);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 0 0 0 10px;
+      margin-top: -2px;
+      margin-right: -4px;
+    }
+
+    .delete-btn:hover {
+      color: #fca5a5;
     }
 
     .message-time {
@@ -457,6 +480,21 @@
       }
     }
 
+    // НОВОЕ: Глобальная функция удаления
+    window.deleteMessage = function(id) {
+      if (confirm('Удалить это сообщение?')) {
+        socket.emit('delete message', id);
+      }
+    };
+
+    // НОВОЕ: Слушатель события удаления сообщения
+    socket.on('delete message', (id) => {
+      const msgElement = document.querySelector(`.message[data-id="${id}"]`);
+      if (msgElement) {
+        msgElement.remove(); // Убираем из HTML
+      }
+    });
+
     photoBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -496,14 +534,12 @@
       };
     });
 
-    // При получении всей истории сообщений с сервера
     socket.on('chat history', (history) => {
       messagesDiv.innerHTML = '';
       history.forEach((msg) => appendMessage(msg));
       scrollToBottom();
     });
 
-    // При получении одного нового сообщения
     socket.on('chat message', (msg) => {
       appendMessage(msg);
       scrollToBottom();
@@ -525,11 +561,27 @@
       const isOwn = msg.user === currentUser;
       const msgEl = document.createElement('div');
       msgEl.classList.add('message', isOwn ? 'own' : 'other');
+      
+      // Записываем ID в атрибут, чтобы потом найти его для удаления
+      if (msg.id) {
+        msgEl.setAttribute('data-id', msg.id);
+      }
 
       const dateObj = msg.timestamp ? new Date(msg.timestamp) : new Date();
       const time = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      let content = `<div class="message-user">${msg.user}</div>`;
+      // Если это наше сообщение и у него есть ID — добавляем кнопку удаления
+      const deleteButtonHtml = (isOwn && msg.id) 
+        ? `<button class="delete-btn" onclick="deleteMessage('${msg.id}')">🗑️</button>` 
+        : '';
+
+      let content = `
+        <div class="message-header">
+          <span class="message-user">${msg.user}</span>
+          ${deleteButtonHtml}
+        </div>
+      `;
+
       if (msg.type === 'image') {
         content += `<img src="${msg.image}" class="message-img" onload="scrollToBottom()" />`;
       } else {
