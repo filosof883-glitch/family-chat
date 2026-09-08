@@ -257,6 +257,76 @@
     .message-time { font-size: 10px; opacity: 0.6; text-align: right; margin-top: 4px; }
     .message-img { width: 100%; max-width: 260px; border-radius: 12px; margin-top: 4px; }
 
+    /* Блок реакций под сообщением */
+    .reactions-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .reaction-badge {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 2px 6px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .reaction-badge.active {
+      background: rgba(168, 85, 247, 0.4);
+      border-color: rgba(168, 85, 247, 0.8);
+    }
+
+    .add-reaction-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 12px;
+      padding: 2px 6px;
+      font-size: 12px;
+      cursor: pointer;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Меню быстрого выбора реакций */
+    .reaction-picker {
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(15px);
+      border-radius: 20px;
+      padding: 4px 8px;
+      display: none;
+      gap: 6px;
+      z-index: 50;
+      box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+    }
+
+    .message.own .reaction-picker {
+      left: auto;
+      right: 0;
+    }
+
+    .reaction-picker.open {
+      display: flex;
+    }
+
+    .reaction-option {
+      font-size: 18px;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+
+    .reaction-option:hover {
+      transform: scale(1.3);
+    }
+
     #typing-indicator {
       display: none;
       align-self: flex-start;
@@ -267,8 +337,12 @@
       margin-bottom: 4px;
     }
 
-    #input-area {
+    #input-container {
+      position: relative;
       flex-shrink: 0;
+    }
+
+    #input-area {
       padding: 10px 12px calc(10px + env(safe-area-inset-bottom)) 12px;
       display: flex;
       gap: 8px;
@@ -283,12 +357,40 @@
       background: rgba(255, 255, 255, 0.08);
     }
 
-    #send-btn, #photo-btn {
+    #send-btn, #photo-btn, #emoji-btn {
       width: 44px; height: 44px; border-radius: 50%; padding: 0;
       display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     }
 
     #file-input { display: none; }
+
+    /* Панель выбора эмодзи */
+    #emoji-picker-panel {
+      display: none;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 8px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.98);
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
+      max-height: 180px;
+      overflow-y: auto;
+      font-size: 22px;
+      text-align: center;
+    }
+
+    #emoji-picker-panel.open {
+      display: grid;
+    }
+
+    .emoji-item {
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.1s;
+    }
+
+    .emoji-item:hover {
+      transform: scale(1.2);
+    }
 
     #group-modal {
       display: none;
@@ -385,11 +487,15 @@
       <div id="messages"></div>
       <div id="typing-indicator"></div>
 
-      <div id="input-area">
-        <button class="icon-btn" id="photo-btn" type="button">📷</button>
-        <input type="file" id="file-input" accept="image/*">
-        <input type="text" id="message-input" placeholder="Сообщение..." autocomplete="off">
-        <button class="btn" id="send-btn" type="button">➔</button>
+      <div id="input-container">
+        <div id="emoji-picker-panel"></div>
+        <div id="input-area">
+          <button class="icon-btn" id="emoji-btn" type="button" title="Смайлики">😀</button>
+          <button class="icon-btn" id="photo-btn" type="button" title="Фото">📷</button>
+          <input type="file" id="file-input" accept="image/*">
+          <input type="text" id="message-input" placeholder="Сообщение..." autocomplete="off">
+          <button class="btn" id="send-btn" type="button">➔</button>
+        </div>
       </div>
     </div>
 
@@ -436,6 +542,8 @@
     const messageInput = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-btn');
     const photoBtn = document.getElementById('photo-btn');
+    const emojiBtn = document.getElementById('emoji-btn');
+    const emojiPickerPanel = document.getElementById('emoji-picker-panel');
     const fileInput = document.getElementById('file-input');
     const typingIndicator = document.getElementById('typing-indicator');
 
@@ -454,6 +562,25 @@
     const createGroupBtn = document.getElementById('create-group-btn');
     const groupNameInput = document.getElementById('group-name-input');
     const groupMembersSelect = document.getElementById('group-members-select');
+
+    const EMOJI_LIST = ['😀', '😂', '😊', '😍', '🥰', '😎', '👍', '❤️', '🔥', '🎉', '🙏', '🙌', '🤔', '😅', '💩', '👏', '🙈', '🚀', '✨', '👌', '💯'];
+    const REACTION_OPTIONS = ['👍', '❤️', '😂', '🔥', '😮'];
+
+    // Заполнение панели эмодзи
+    EMOJI_LIST.forEach(emoji => {
+      const span = document.createElement('span');
+      span.className = 'emoji-item';
+      span.innerText = emoji;
+      span.addEventListener('click', () => {
+        messageInput.value += emoji;
+        messageInput.focus();
+      });
+      emojiPickerPanel.appendChild(span);
+    });
+
+    emojiBtn.addEventListener('click', () => {
+      emojiPickerPanel.classList.toggle('open');
+    });
 
     function performLogin() {
       const val = usernameInput.value.trim();
@@ -489,6 +616,7 @@
       chatSubtitle.innerText = subtitle;
       messagesDiv.innerHTML = '';
       typingIndicator.style.display = 'none';
+      emojiPickerPanel.classList.remove('open');
       sidebar.classList.remove('open');
 
       document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
@@ -597,6 +725,7 @@
       if (text) {
         clearTimeout(typingTimeout);
         socket.emit('typing', { roomId: currentRoomId, username: currentUser, isTyping: false });
+        emojiPickerPanel.classList.remove('open');
 
         socket.emit('chat message', {
           roomId: currentRoomId,
@@ -666,6 +795,52 @@
       }
     });
 
+    // Добавление / снятие реакции
+    window.toggleReaction = function(messageId, emoji) {
+      socket.emit('toggle reaction', { roomId: currentRoomId, messageId, emoji, user: currentUser });
+    };
+
+    socket.on('update reaction', ({ roomId, messageId, reactions }) => {
+      if (roomId === currentRoomId) {
+        const msgEl = document.querySelector(`.message[data-id="${messageId}"]`);
+        if (msgEl) {
+          const reactionsBar = msgEl.querySelector('.reactions-bar');
+          if (reactionsBar) {
+            renderReactionsBar(reactionsBar, messageId, reactions);
+          }
+        }
+      }
+    });
+
+    function renderReactionsBar(container, messageId, reactions = {}) {
+      container.innerHTML = '';
+
+      Object.keys(reactions).forEach(emoji => {
+        const users = reactions[emoji] || [];
+        if (users.length > 0) {
+          const badge = document.createElement('span');
+          const isUserReacted = users.includes(currentUser);
+          badge.className = `reaction-badge ${isUserReacted ? 'active' : ''}`;
+          badge.innerHTML = `${emoji} <span>${users.length}</span>`;
+          badge.onclick = (e) => {
+            e.stopPropagation();
+            toggleReaction(messageId, emoji);
+          };
+          container.appendChild(badge);
+        }
+      });
+
+      const addBtn = document.createElement('button');
+      addBtn.className = 'add-reaction-btn';
+      addBtn.innerText = '😀+';
+      addBtn.onclick = (e) => {
+        e.stopPropagation();
+        const picker = container.parentElement.querySelector('.reaction-picker');
+        if (picker) picker.classList.toggle('open');
+      };
+      container.appendChild(addBtn);
+    }
+
     function appendMessage(msg) {
       const isOwn = msg.user === currentUser;
       const msgEl = document.createElement('div');
@@ -675,18 +850,39 @@
       const time = (msg.timestamp ? new Date(msg.timestamp) : new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const delBtn = (isOwn && msg.id) ? `<button class="delete-btn" onclick="deleteMessage('${msg.id}')">🗑️</button>` : '';
 
-      let content = `<div class="message-header"><span class="message-user">${msg.user}</span>${delBtn}</div>`;
+      let content = `<div class="message-header"><span class="message-user">${escapeHtml(msg.user)}</span>${delBtn}</div>`;
       content += msg.type === 'image' ? `<img src="${msg.image}" class="message-img" onload="scrollToBottom()" />` : `<div>${escapeHtml(msg.text)}</div>`;
       content += `<div class="message-time">${time}</div>`;
 
+      // Генерация тулбара реакций для сообщения
+      content += `<div class="reaction-picker">`;
+      REACTION_OPTIONS.forEach(emoji => {
+        content += `<span class="reaction-option" onclick="toggleReaction('${msg.id}', '${emoji}'); this.parentElement.classList.remove('open');">${emoji}</span>`;
+      });
+      content += `</div>`;
+
+      content += `<div class="reactions-bar"></div>`;
+
       msgEl.innerHTML = content;
       messagesDiv.appendChild(msgEl);
+
+      if (msg.id) {
+        const reactionsBar = msgEl.querySelector('.reactions-bar');
+        renderReactionsBar(reactionsBar, msg.id, msg.reactions || {});
+      }
     }
+
+    // Закрытие меню реакций при клике в любое другое место
+    document.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('add-reaction-btn') && !e.target.classList.contains('reaction-option')) {
+        document.querySelectorAll('.reaction-picker').forEach(p => p.classList.remove('open'));
+      }
+    });
 
     function scrollToBottom() { messagesDiv.scrollTop = messagesDiv.scrollHeight; }
     function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
-    // --- ОБНОВЛЕННЫЙ WEBRTC БЛОК ---
+    // --- WEBRTC БЛОК ---
     const callOverlay = document.getElementById('call-overlay');
     const callStatus = document.getElementById('call-status');
     const acceptCallBtn = document.getElementById('accept-call-btn');
