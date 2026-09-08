@@ -137,7 +137,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('ice-candidate', ({ targetSocketId, candidate }) => {
-    io.to(targetSocketId).emit('ice-candidate', { candidate });
+    if (targetSocketId) {
+      io.to(targetSocketId).emit('ice-candidate', { candidate });
+    }
   });
 
   socket.on('end-call', ({ targetSocketId }) => {
