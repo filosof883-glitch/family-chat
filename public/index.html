@@ -257,7 +257,6 @@
     .message-time { font-size: 10px; opacity: 0.6; text-align: right; margin-top: 4px; }
     .message-img { width: 100%; max-width: 260px; border-radius: 12px; margin-top: 4px; }
 
-    /* Блок реакций под сообщением */
     .reactions-bar {
       display: flex;
       flex-wrap: wrap;
@@ -292,7 +291,6 @@
       color: rgba(255, 255, 255, 0.7);
     }
 
-    /* Меню быстрого выбора реакций */
     .reaction-picker {
       position: absolute;
       bottom: 100%;
@@ -364,7 +362,6 @@
 
     #file-input { display: none; }
 
-    /* Панель выбора эмодзи */
     #emoji-picker-panel {
       display: none;
       grid-template-columns: repeat(7, 1fr);
@@ -566,7 +563,6 @@
     const EMOJI_LIST = ['😀', '😂', '😊', '😍', '🥰', '😎', '👍', '❤️', '🔥', '🎉', '🙏', '🙌', '🤔', '😅', '💩', '👏', '🙈', '🚀', '✨', '👌', '💯'];
     const REACTION_OPTIONS = ['👍', '❤️', '😂', '🔥', '😮'];
 
-    // Заполнение панели эмодзи
     EMOJI_LIST.forEach(emoji => {
       const span = document.createElement('span');
       span.className = 'emoji-item';
@@ -581,6 +577,26 @@
     emojiBtn.addEventListener('click', () => {
       emojiPickerPanel.classList.toggle('open');
     });
+
+    // Функция запроса разрешения на Push-уведомления
+    function requestNotificationPermission() {
+      if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+
+    // Функция отправки системного Push-уведомления
+    function sendPushNotification(title, options) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        if (document.hidden || !document.hasFocus()) {
+          const notification = new Notification(title, options);
+          notification.onclick = () => {
+            window.focus();
+            notification.close();
+          };
+        }
+      }
+    }
 
     function performLogin() {
       const val = usernameInput.value.trim();
@@ -603,6 +619,7 @@
     function showChat() {
       authScreen.style.display = 'none';
       chatScreen.style.display = 'flex';
+      requestNotificationPermission();
       socket.emit('register user', currentUser);
       switchRoom('general', 'Общий чат', 'Чат для всех');
     }
@@ -780,6 +797,16 @@
         appendMessage(msg);
         scrollToBottom();
       }
+
+      // Если сообщение пришло от другого пользователя — отправляем push-уведомление
+      if (msg.user !== currentUser) {
+        const notificationText = msg.type === 'image' ? '📷 Фотография' : msg.text;
+        sendPushNotification(`Новое сообщение от ${msg.user}`, {
+          body: notificationText,
+          icon: '/favicon.ico',
+          tag: msg.roomId
+        });
+      }
     });
 
     window.deleteMessage = function(id) {
@@ -795,7 +822,6 @@
       }
     });
 
-    // Добавление / снятие реакции
     window.toggleReaction = function(messageId, emoji) {
       socket.emit('toggle reaction', { roomId: currentRoomId, messageId, emoji, user: currentUser });
     };
@@ -854,7 +880,6 @@
       content += msg.type === 'image' ? `<img src="${msg.image}" class="message-img" onload="scrollToBottom()" />` : `<div>${escapeHtml(msg.text)}</div>`;
       content += `<div class="message-time">${time}</div>`;
 
-      // Генерация тулбара реакций для сообщения
       content += `<div class="reaction-picker">`;
       REACTION_OPTIONS.forEach(emoji => {
         content += `<span class="reaction-option" onclick="toggleReaction('${msg.id}', '${emoji}'); this.parentElement.classList.remove('open');">${emoji}</span>`;
@@ -872,7 +897,6 @@
       }
     }
 
-    // Закрытие меню реакций при клике в любое другое место
     document.addEventListener('click', (e) => {
       if (!e.target.classList.contains('add-reaction-btn') && !e.target.classList.contains('reaction-option')) {
         document.querySelectorAll('.reaction-picker').forEach(p => p.classList.remove('open'));
@@ -943,6 +967,13 @@
       callOverlay.style.display = 'flex';
       callStatus.innerText = `Входящий вызов от ${data.from}`;
       acceptCallBtn.style.display = 'flex';
+
+      // Push-уведомление о входящем звонке
+      sendPushNotification(`Входящий ${data.isVideo ? 'видеовызов' : 'аудиовызов'}`, {
+        body: `Звонит ${data.from}`,
+        icon: '/favicon.ico',
+        tag: 'call'
+      });
     });
 
     acceptCallBtn.addEventListener('click', async () => {
