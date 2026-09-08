@@ -144,7 +144,6 @@
       cursor: pointer;
     }
 
-    /* Меню диалогов (Боковая шторка) */
     #sidebar {
       position: absolute;
       top: 0; left: -100%;
@@ -281,7 +280,6 @@
 
     #file-input { display: none; }
 
-    /* Модальное окно создания группы */
     #group-modal {
       display: none;
       position: absolute;
@@ -310,7 +308,6 @@
       font-size: 14px;
     }
 
-    /* Вызовы */
     #call-overlay {
       position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: 100dvh;
       background: rgba(15, 23, 42, 0.98); z-index: 999; display: none;
@@ -331,20 +328,17 @@
 <body>
 
   <div id="app">
-    <!-- Авторизация -->
     <div id="auth-screen">
       <div class="glass-card">
         <h2>Семейный Чат</h2>
-        <form id="auth-form">
+        <form id="auth-form" onsubmit="return false;">
           <input type="text" id="username-input" placeholder="Введите ваше имя..." required autocomplete="off">
-          <button type="submit" class="btn">Войти в чат</button>
+          <button type="button" id="login-submit-btn" class="btn">Войти в чат</button>
         </form>
       </div>
     </div>
 
-    <!-- Основной экран -->
     <div id="chat-screen">
-      <!-- Шапка -->
       <div id="header">
         <button class="icon-btn" id="menu-btn" title="Чаты">💬</button>
         <div id="chat-title">
@@ -357,7 +351,6 @@
         </div>
       </div>
 
-      <!-- Боковое меню комнат и пользователей -->
       <div id="sidebar">
         <div class="sidebar-header">
           <h3>Чаты</h3>
@@ -379,10 +372,8 @@
         <button class="btn" id="logout-btn" style="margin-top: auto; background: rgba(239, 68, 68, 0.2); color: #fca5a5;">Выйти</button>
       </div>
 
-      <!-- Сообщения -->
       <div id="messages"></div>
 
-      <!-- Ввод сообщения -->
       <div id="input-area">
         <button class="icon-btn" id="photo-btn" type="button">📷</button>
         <input type="file" id="file-input" accept="image/*">
@@ -391,7 +382,6 @@
       </div>
     </div>
 
-    <!-- Модалка создания группы -->
     <div id="group-modal">
       <div class="glass-card">
         <h3 style="margin-bottom: 16px;">Новая группа</h3>
@@ -405,7 +395,6 @@
       </div>
     </div>
 
-    <!-- Звонки -->
     <audio id="remote-audio" autoplay playsinline></audio>
     <div id="call-overlay">
       <h3 id="call-status">Входящий вызов...</h3>
@@ -427,11 +416,10 @@
     let currentRoomId = 'general';
     let allUsers = [];
 
-    // Элементы
     const authScreen = document.getElementById('auth-screen');
     const chatScreen = document.getElementById('chat-screen');
-    const authForm = document.getElementById('auth-form');
     const usernameInput = document.getElementById('username-input');
+    const loginSubmitBtn = document.getElementById('login-submit-btn');
     const messagesDiv = document.getElementById('messages');
     const messageInput = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-btn');
@@ -454,17 +442,23 @@
     const groupNameInput = document.getElementById('group-name-input');
     const groupMembersSelect = document.getElementById('group-members-select');
 
-    if (currentUser) showChat();
-
-    authForm.addEventListener('submit', (e) => {
-      e.preventDefault();
+    function performLogin() {
       const val = usernameInput.value.trim();
       if (val) {
         currentUser = val;
         localStorage.setItem('chat_username', currentUser);
         showChat();
       }
+    }
+
+    loginSubmitBtn.addEventListener('click', performLogin);
+    usernameInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') performLogin();
     });
+
+    if (currentUser) {
+      showChat();
+    }
 
     function showChat() {
       authScreen.style.display = 'none';
@@ -473,11 +467,9 @@
       switchRoom('general', 'Общий чат', 'Чат для всех');
     }
 
-    // Управление меню
     menuBtn.addEventListener('click', () => sidebar.classList.add('open'));
     closeSidebarBtn.addEventListener('click', () => sidebar.classList.remove('open'));
 
-    // Переключение комнат
     function switchRoom(roomId, roomTitle, subtitle = '') {
       currentRoomId = roomId;
       currentChatName.innerText = roomTitle;
@@ -485,9 +477,7 @@
       messagesDiv.innerHTML = '';
       sidebar.classList.remove('open');
 
-      // Подсветка активной комнаты
       document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-      
       socket.emit('join room', roomId);
     }
 
@@ -496,12 +486,11 @@
       switchRoom('general', 'Общий чат', 'Чат для всех');
     });
 
-    // Список пользователей (для Личных Сообщений)
     socket.on('users list', (users) => {
       allUsers = users;
       usersListContainer.innerHTML = '';
       users.forEach(u => {
-        if (u.username === currentUser) return; // Себя не выводим в личку
+        if (u.username === currentUser) return;
 
         const item = document.createElement('div');
         item.className = 'chat-item';
@@ -519,22 +508,22 @@
       });
     });
 
-    // Список пользовательских Групп
     socket.on('user rooms', (rooms) => {
       groupsListContainer.innerHTML = '';
-      rooms.forEach(r => {
-        const item = document.createElement('div');
-        item.className = 'chat-item';
-        item.innerHTML = `<span>👥 ${escapeHtml(r.name)}</span>`;
-        item.addEventListener('click', () => {
-          switchRoom(r.id, r.name, `${r.members.length} участн.`);
-          item.classList.add('active');
+      if (Array.isArray(rooms)) {
+        rooms.forEach(r => {
+          const item = document.createElement('div');
+          item.className = 'chat-item';
+          item.innerHTML = `<span>👥 ${escapeHtml(r.name)}</span>`;
+          item.addEventListener('click', () => {
+            switchRoom(r.id, r.name, `${r.members ? r.members.length : 0} участн.`);
+            item.classList.add('active');
+          });
+          groupsListContainer.appendChild(item);
         });
-        groupsListContainer.appendChild(item);
-      });
+      }
     });
 
-    // Создание группы
     openGroupModalBtn.addEventListener('click', () => {
       groupMembersSelect.innerHTML = '';
       allUsers.forEach(u => {
@@ -565,7 +554,6 @@
       location.reload();
     });
 
-    // Сообщения
     sendBtn.addEventListener('click', sendMessage);
     messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
 
@@ -613,7 +601,9 @@
     socket.on('chat history', ({ roomId, messages }) => {
       if (roomId === currentRoomId) {
         messagesDiv.innerHTML = '';
-        messages.forEach(appendMessage);
+        if (Array.isArray(messages)) {
+          messages.forEach(appendMessage);
+        }
         scrollToBottom();
       }
     });
@@ -656,9 +646,8 @@
     }
 
     function scrollToBottom() { messagesDiv.scrollTop = messagesDiv.scrollHeight; }
-    function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace/>/g, "&gt;"); }
+    function escapeHtml(text) { return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
-    // WebRTC Вызовы
     const callOverlay = document.getElementById('call-overlay');
     const callStatus = document.getElementById('call-status');
     const acceptCallBtn = document.getElementById('accept-call-btn');
