@@ -967,7 +967,7 @@
 
     function escapeHtml(text) { return text ? text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : ''; }
 
-    // --- WEBRTC ЗВОНКИ И ИСПРАВЛЕНИЯ ---
+    // --- WEBRTC ЗВОНКИ ---
     const callOverlay = document.getElementById('call-overlay');
     const callStatus = document.getElementById('call-status');
     const acceptCallBtn = document.getElementById('accept-call-btn');
@@ -980,7 +980,6 @@
     let activeCallTargetSocketId = null;
     let iceCandidatesQueue = [];
 
-    // Список надежных публичных STUN-серверов
     const rtcConfig = { 
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -1122,7 +1121,6 @@
           if (activeCallTargetSocketId) {
             socket.emit('ice-candidate', { targetSocketId: activeCallTargetSocketId, candidate: e.candidate });
           } else {
-            // Если сокет получателя ещё не сохранён, отправляем кандидатов в очереди
             iceCandidatesQueue.push(e.candidate);
           }
         }
