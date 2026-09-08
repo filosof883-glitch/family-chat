@@ -20,7 +20,7 @@ const USERS_FILE = path.join(__dirname, 'users.json');
 const ROOMS_FILE = path.join(__dirname, 'rooms.json');
 
 // --- ЗАГРУЗКА И СОХРАНЕНИЕ ДАННЫХ ---
-let messages = {}; // Структура: { "general": [...], "room_id": [...] }
+let messages = {};
 if (fs.existsSync(MESSAGES_FILE)) {
   try {
     messages = JSON.parse(fs.readFileSync(MESSAGES_FILE, 'utf8'));
@@ -54,7 +54,7 @@ function saveUsers() {
   }
 }
 
-let customRooms = []; // Групповые чаты: [{ id: 'group_123', name: 'Семья', members: ['Папа', 'Мама'] }]
+let customRooms = [];
 if (fs.existsSync(ROOMS_FILE)) {
   try {
     customRooms = JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'));
@@ -81,15 +81,16 @@ function getUsersWithStatus() {
   }));
 }
 
-// Генерация уникального ID для личного чата двух людей (например "dm_Анна_Иван")
-function getDirectRoomId(user1, user2) {
-  return 'dm_' + [user1, user2].sort().join('_');
+function sendUserRooms(username, socket) {
+  const userGroups = customRooms.filter(r => r.members && r.members.includes(username));
+  socket.emit('user rooms', userGroups);
 }
 
 io.on('connection', (socket) => {
   console.log('Подключился сокет:', socket.id);
 
   socket.on('register user', (username) => {
+    if (!username) return;
     activeSockets[socket.id] = username;
 
     if (!registeredUsers.includes(username)) {
@@ -97,29 +98,27 @@ io.on('connection', (socket) => {
       saveUsers();
     }
 
-    // Автоматически подключаем пользователя во все его комнаты
     socket.join('general');
     customRooms.forEach(room => {
-      if (room.members.includes(username)) {
+      if (room.members && room.members.includes(username)) {
         socket.join(room.id);
       }
     });
 
-    // Оповещаем всех об обновлении пользователей
     io.emit('users list', getUsersWithStatus());
     sendUserRooms(username, socket);
   });
 
-  // Получить историю конкретной комнаты
   socket.on('join room', (roomId) => {
     socket.join(roomId);
     const roomMessages = messages[roomId] || [];
     socket.emit('chat history', { roomId, messages: roomMessages });
   });
 
-  // Создание группового чата
   socket.on('create group', ({ groupName, members }) => {
     const currentUser = activeSockets[socket.id];
+    if (!currentUser) return;
+
     if (!members.includes(currentUser)) members.push(currentUser);
 
     const roomId = 'group_' + Date.now();
@@ -127,7 +126,6 @@ io.on('connection', (socket) => {
     customRooms.push(newRoom);
     saveRooms();
 
-    // Подключаем сокеты участников к комнате
     for (const [sId, uName] of Object.entries(activeSockets)) {
       if (members.includes(uName)) {
         const targetSocket = io.sockets.sockets.get(sId);
@@ -139,11 +137,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Отправка сообщения
   socket.on('chat message', (data) => {
     const { roomId, text, image, type, user } = data;
-    
-    // Подключаем сокет к приватной комнате, если он ещё не там
+    if (!roomId) return;
+
     socket.join(roomId);
 
     const messageData = {
@@ -161,8 +158,6 @@ io.on('connection', (socket) => {
     if (messages[roomId].length > 200) messages[roomId] = messages[roomId].slice(-200);
 
     saveMessages();
-
-    // Отправляем сообщение всем в этой комнате
     io.to(roomId).emit('chat message', messageData);
   });
 
@@ -174,7 +169,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // WebRTC Звонки
   socket.on('call-user', (data) => socket.broadcast.emit('incoming-call', data));
   socket.on('make-answer', (data) => socket.broadcast.emit('call-answered', data));
   socket.on('ice-candidate', (data) => socket.broadcast.emit('ice-candidate', data));
@@ -186,11 +180,6 @@ io.on('connection', (socket) => {
     console.log('Отключился сокет:', socket.id);
   });
 });
-
-function sendUserRooms(username, socket) {
-  const userGroups = customRooms.filter(r => r.members.includes(username));
-  socket.emit('user rooms', userGroups);
-}
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Сервер запущен на порту ${PORT}`));
