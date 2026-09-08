@@ -41,7 +41,6 @@
       -webkit-backdrop-filter: blur(20px);
     }
 
-    /* Экран авторизации */
     #auth-screen {
       display: flex;
       flex-direction: column;
@@ -94,7 +93,6 @@
       cursor: pointer;
     }
 
-    /* Экран чата */
     #chat-screen {
       display: none;
       flex-direction: column;
@@ -103,7 +101,6 @@
       position: relative;
     }
 
-    /* Верхняя панель */
     #header {
       padding: 12px 16px;
       background: rgba(15, 23, 42, 0.85);
@@ -148,7 +145,6 @@
       font-size: 14px;
     }
 
-    /* Список сообщений */
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -202,15 +198,13 @@
     }
 
     .message-img {
-      max-width: 100%;
-      max-height: 300px;
-      object-fit: cover;
+      width: 100%;
+      max-width: 260px;
       border-radius: 12px;
       margin-top: 4px;
       display: block;
     }
 
-    /* Панель ввода */
     #input-area {
       flex-shrink: 0;
       padding: 10px 12px calc(10px + env(safe-area-inset-bottom)) 12px;
@@ -246,7 +240,6 @@
       display: none;
     }
 
-    /* Оверлей звонка */
     #call-overlay {
       position: fixed;
       top: 0;
@@ -323,7 +316,6 @@
 <body>
 
   <div id="app">
-    <!-- Экран авторизации -->
     <div id="auth-screen">
       <div class="glass-card">
         <h2>Семейный Чат</h2>
@@ -334,7 +326,6 @@
       </div>
     </div>
 
-    <!-- Экран чата -->
     <div id="chat-screen">
       <div id="header">
         <div id="user-display">Вы: ...</div>
@@ -355,7 +346,6 @@
       </div>
     </div>
 
-    <!-- Раздел вызова -->
     <audio id="remote-audio" autoplay playsinline></audio>
     <div id="call-overlay">
       <h3 id="call-status">Входящий вызов...</h3>
@@ -467,48 +457,43 @@
       }
     }
 
-    // Отправка фотографий с авто-сжатием
     photoBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function(evt) {
-          const img = new Image();
-          img.onload = function() {
-            // Сжимаем изображение до макс. размера 1024px
-            const canvas = document.createElement('canvas');
-            let width = img.width;
-            let height = img.height;
-            const maxSize = 1024;
+      if (!file) return;
 
-            if (width > height && width > maxSize) {
-              height *= maxSize / width;
-              width = maxSize;
-            } else if (height > maxSize) {
-              width *= maxSize / height;
-              height = maxSize;
-            }
+      const img = new Image();
+      img.src = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxSize = 800;
 
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
+        if (width > height && width > maxSize) {
+          height *= maxSize / width;
+          width = maxSize;
+        } else if (height > maxSize) {
+          width *= maxSize / height;
+          height = maxSize;
+        }
 
-            // Преобразуем в сжатый JPEG (качество 0.7)
-            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
 
-            socket.emit('chat message', {
-              user: currentUser,
-              image: compressedDataUrl,
-              type: 'image'
-            });
-            fileInput.value = ''; // Сбрасываем инпут
-          };
-          img.src = evt.target.result;
-        };
-        reader.readAsDataURL(file);
-      }
+        const base64Image = canvas.toDataURL('image/jpeg', 0.6);
+
+        socket.emit('chat message', {
+          user: currentUser,
+          image: base64Image,
+          type: 'image'
+        });
+
+        fileInput.value = '';
+        URL.revokeObjectURL(img.src);
+      };
     });
 
     socket.on('chat message', (msg) => {
@@ -555,7 +540,6 @@
       return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
-    // --- Логика звонков WebRTC ---
     document.getElementById('audio-call-btn').addEventListener('click', () => startCall(false));
     document.getElementById('video-call-btn').addEventListener('click', () => startCall(true));
 
