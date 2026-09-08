@@ -68,8 +68,8 @@
       <button id="send-btn" type="button">➤</button>
     </div>
 
-    <!-- Элементы видео и аудио -->
-    <audio id="remote-audio" autoplay></audio>
+    <!-- Элементы видео и аудио c playsinline для iOS Safari -->
+    <audio id="remote-audio" autoplay playsinline></audio>
     <div id="call-overlay">
       <h3 id="call-status">Входящий вызов...</h3>
       <div id="video-container">
@@ -113,7 +113,8 @@
     let incomingOffer;
     let isVideoCall = false;
 
-        const rtcConfig = {
+    // Конфигурация TURN-серверов Metered
+    const rtcConfig = {
       iceServers: [
         { urls: 'stun:stun.relay.metered.ca:80' },
         {
@@ -133,7 +134,6 @@
         }
       ]
     };
-
 
     if (currentUser) {
       showChat();
@@ -220,12 +220,13 @@
       };
     }
 
-    // --- Логика Аудио/Видео Звонков ---
+    // --- Звонки ---
     document.getElementById('audio-call-btn').addEventListener('click', () => startCall(false));
     document.getElementById('video-call-btn').addEventListener('click', () => startCall(true));
 
     async function startCall(videoEnabled) {
       isVideoCall = videoEnabled;
+      unlockAudioContext();
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideoCall });
         localVideo.srcObject = isVideoCall ? localStream : null;
@@ -238,14 +239,7 @@
         peerConnection = new RTCPeerConnection(rtcConfig);
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-        peerConnection.ontrack = (event) => {
-          if (isVideoCall) {
-            remoteVideo.srcObject = event.streams[0];
-          } else {
-            remoteAudio.srcObject = event.streams[0];
-            remoteAudio.play().catch(e => console.log('Audio autoplay error:', e));
-          }
-        };
+        peerConnection.ontrack = (event) => handleRemoteStream(event.streams[0]);
 
         peerConnection.onicecandidate = (event) => {
           if (event.candidate) {
@@ -273,6 +267,7 @@
     });
 
     acceptCallBtn.addEventListener('click', async () => {
+      unlockAudioContext();
       acceptCallBtn.style.display = 'none';
       callStatus.innerText = 'Соединение...';
 
@@ -284,15 +279,7 @@
         peerConnection = new RTCPeerConnection(rtcConfig);
         localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-        peerConnection.ontrack = (event) => {
-          if (isVideoCall) {
-            remoteVideo.srcObject = event.streams[0];
-            remoteVideo.play().catch(e => console.log('Video play error:', e));
-          } else {
-            remoteAudio.srcObject = event.streams[0];
-            remoteAudio.play().catch(e => console.log('Audio play error:', e));
-          }
-        };
+        peerConnection.ontrack = (event) => handleRemoteStream(event.streams[0]);
 
         peerConnection.onicecandidate = (event) => {
           if (event.candidate) {
@@ -309,6 +296,24 @@
         alert('Ошибка принятия вызова: ' + err.message);
       }
     });
+
+    function handleRemoteStream(stream) {
+      if (isVideoCall) {
+        remoteVideo.srcObject = stream;
+        remoteVideo.muted = false;
+        remoteVideo.play().catch(e => console.log('Video play err:', e));
+      } else {
+        remoteAudio.srcObject = stream;
+        remoteAudio.muted = false;
+        remoteAudio.play().catch(e => console.log('Audio play err:', e));
+      }
+    }
+
+    // Снятие блокировки Autoplay в iOS Safari
+    function unlockAudioContext() {
+      remoteAudio.play().catch(() => {});
+      remoteVideo.play().catch(() => {});
+    }
 
     socket.on('call-answered', async (data) => {
       callStatus.innerText = 'Разговор...';
@@ -348,7 +353,7 @@
       remoteVideo.srcObject = null;
     }
 
-    // История и сообщения
+    // Чат и сообщения
     socket.on('chat history', (history) => {
       messagesDiv.innerHTML = '';
       history.forEach(appendMessage);
