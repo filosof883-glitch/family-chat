@@ -114,20 +114,21 @@
 
     #user-display {
       font-weight: 600;
-      font-size: 16px;
+      font-size: 15px;
     }
 
     .header-actions {
       display: flex;
-      gap: 8px;
+      gap: 6px;
+      align-items: center;
     }
 
     .icon-btn {
       background: rgba(255, 255, 255, 0.1);
       border: 1px solid rgba(255, 255, 255, 0.15);
       border-radius: 50%;
-      width: 40px;
-      height: 40px;
+      width: 38px;
+      height: 38px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -139,10 +140,61 @@
       background: rgba(239, 68, 68, 0.2);
       border: 1px solid rgba(239, 68, 68, 0.3);
       color: #fca5a5;
-      padding: 8px 14px;
+      padding: 8px 12px;
       border-radius: 12px;
       cursor: pointer;
+      font-size: 13px;
+    }
+
+    /* Окно списка пользователей */
+    #users-modal {
+      display: none;
+      position: absolute;
+      top: 60px;
+      right: 16px;
+      width: 220px;
+      background: rgba(30, 27, 75, 0.95);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 12px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+      z-index: 100;
+    }
+
+    .users-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .user-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 0;
       font-size: 14px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .status-dot.online {
+      background-color: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+    }
+
+    .status-dot.offline {
+      background-color: #64748b;
     }
 
     #messages {
@@ -185,7 +237,6 @@
       border-bottom-left-radius: 4px;
     }
 
-    /* НОВЫЙ СТИЛЬ: Заголовок сообщения (Имя + Кнопка удаления) */
     .message-header {
       display: flex;
       justify-content: space-between;
@@ -209,9 +260,7 @@
       margin-right: -4px;
     }
 
-    .delete-btn:hover {
-      color: #fca5a5;
-    }
+    .delete-btn:hover { color: #fca5a5; }
 
     .message-time {
       font-size: 10px;
@@ -259,16 +308,11 @@
       flex-shrink: 0;
     }
 
-    #file-input {
-      display: none;
-    }
+    #file-input { display: none; }
 
     #call-overlay {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
+      top: 0; left: 0; right: 0; bottom: 0;
       height: 100dvh;
       background: rgba(15, 23, 42, 0.98);
       z-index: 999;
@@ -302,10 +346,8 @@
 
     #local-video {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 100px;
-      height: 140px;
+      top: 10px; right: 10px;
+      width: 100px; height: 140px;
       object-fit: cover;
       border-radius: 12px;
       border: 2px solid rgba(255, 255, 255, 0.3);
@@ -319,8 +361,7 @@
     }
 
     .call-action-btn {
-      width: 64px;
-      height: 64px;
+      width: 64px; height: 64px;
       border-radius: 50%;
       border: none;
       color: white;
@@ -353,10 +394,17 @@
       <div id="header">
         <div id="user-display">Вы: ...</div>
         <div class="header-actions">
+          <button class="icon-btn" id="users-toggle-btn" title="Участники">👥</button>
           <button class="icon-btn" id="audio-call-btn" title="Аудиовызов">📞</button>
           <button class="icon-btn" id="video-call-btn" title="Видеовызов">📹</button>
           <button class="logout-btn" id="logout-btn">Выйти</button>
         </div>
+      </div>
+
+      <!-- Выпадающее окно со списком участников -->
+      <div id="users-modal">
+        <div class="users-title">Участники чата</div>
+        <div id="users-list-container"></div>
       </div>
 
       <div id="messages"></div>
@@ -398,6 +446,10 @@
     const logoutBtn = document.getElementById('logout-btn');
     const photoBtn = document.getElementById('photo-btn');
     const fileInput = document.getElementById('file-input');
+
+    const usersToggleBtn = document.getElementById('users-toggle-btn');
+    const usersModal = document.getElementById('users-modal');
+    const usersListContainer = document.getElementById('users-list-container');
 
     const callOverlay = document.getElementById('call-overlay');
     const callStatus = document.getElementById('call-status');
@@ -458,6 +510,30 @@
       }
     }
 
+    // Открытие/закрытие списка участников
+    usersToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      usersModal.style.display = usersModal.style.display === 'block' ? 'none' : 'block';
+    });
+
+    document.addEventListener('click', () => {
+      usersModal.style.display = 'none';
+    });
+
+    // Обработка получения списка участников
+    socket.on('users list', (users) => {
+      usersListContainer.innerHTML = '';
+      users.forEach(u => {
+        const row = document.createElement('div');
+        row.className = 'user-row';
+        row.innerHTML = `
+          <span>${escapeHtml(u.username)} ${u.username === currentUser ? '(Вы)' : ''}</span>
+          <span class="status-dot ${u.online ? 'online' : 'offline'}" title="${u.online ? 'В сети' : 'Не в сети'}"></span>
+        `;
+        usersListContainer.appendChild(row);
+      });
+    });
+
     logoutBtn.addEventListener('click', () => {
       localStorage.removeItem('chat_username');
       location.reload();
@@ -480,18 +556,16 @@
       }
     }
 
-    // НОВОЕ: Глобальная функция удаления
     window.deleteMessage = function(id) {
       if (confirm('Удалить это сообщение?')) {
         socket.emit('delete message', id);
       }
     };
 
-    // НОВОЕ: Слушатель события удаления сообщения
     socket.on('delete message', (id) => {
       const msgElement = document.querySelector(`.message[data-id="${id}"]`);
       if (msgElement) {
-        msgElement.remove(); // Убираем из HTML
+        msgElement.remove();
       }
     });
 
@@ -561,8 +635,7 @@
       const isOwn = msg.user === currentUser;
       const msgEl = document.createElement('div');
       msgEl.classList.add('message', isOwn ? 'own' : 'other');
-      
-      // Записываем ID в атрибут, чтобы потом найти его для удаления
+
       if (msg.id) {
         msgEl.setAttribute('data-id', msg.id);
       }
@@ -570,7 +643,6 @@
       const dateObj = msg.timestamp ? new Date(msg.timestamp) : new Date();
       const time = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      // Если это наше сообщение и у него есть ID — добавляем кнопку удаления
       const deleteButtonHtml = (isOwn && msg.id) 
         ? `<button class="delete-btn" onclick="deleteMessage('${msg.id}')">🗑️</button>` 
         : '';
