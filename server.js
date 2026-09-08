@@ -137,6 +137,11 @@ io.on('connection', (socket) => {
     }
   });
 
+  // --- ИНДИКАТОР НАБОРА ТЕКСТА ---
+  socket.on('typing', ({ roomId, username, isTyping }) => {
+    socket.to(roomId).emit('typing', { roomId, username, isTyping });
+  });
+
   socket.on('chat message', (data) => {
     const { roomId, text, image, type, user } = data;
     if (!roomId) return;
