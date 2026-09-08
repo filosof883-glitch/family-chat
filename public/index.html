@@ -203,6 +203,8 @@
 
     .message-img {
       max-width: 100%;
+      max-height: 300px;
+      object-fit: cover;
       border-radius: 12px;
       margin-top: 4px;
       display: block;
@@ -465,17 +467,45 @@
       }
     }
 
+    // Отправка фотографий с авто-сжатием
     photoBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = function(evt) {
-          socket.emit('chat message', {
-            user: currentUser,
-            image: evt.target.result,
-            type: 'image'
-          });
+          const img = new Image();
+          img.onload = function() {
+            // Сжимаем изображение до макс. размера 1024px
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const maxSize = 1024;
+
+            if (width > height && width > maxSize) {
+              height *= maxSize / width;
+              width = maxSize;
+            } else if (height > maxSize) {
+              width *= maxSize / height;
+              height = maxSize;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            // Преобразуем в сжатый JPEG (качество 0.7)
+            const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+            socket.emit('chat message', {
+              user: currentUser,
+              image: compressedDataUrl,
+              type: 'image'
+            });
+            fileInput.value = ''; // Сбрасываем инпут
+          };
+          img.src = evt.target.result;
         };
         reader.readAsDataURL(file);
       }
@@ -507,7 +537,7 @@
 
       let content = `<div class="message-user">${msg.user}</div>`;
       if (msg.type === 'image') {
-        content += `<img src="${msg.image}" class="message-img" />`;
+        content += `<img src="${msg.image}" class="message-img" onload="scrollToBottom()" />`;
       } else {
         content += `<div>${escapeHtml(msg.text)}</div>`;
       }
