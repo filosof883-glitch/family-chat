@@ -496,6 +496,14 @@
       };
     });
 
+    // При получении всей истории сообщений с сервера
+    socket.on('chat history', (history) => {
+      messagesDiv.innerHTML = '';
+      history.forEach((msg) => appendMessage(msg));
+      scrollToBottom();
+    });
+
+    // При получении одного нового сообщения
     socket.on('chat message', (msg) => {
       appendMessage(msg);
       scrollToBottom();
@@ -518,7 +526,8 @@
       const msgEl = document.createElement('div');
       msgEl.classList.add('message', isOwn ? 'own' : 'other');
 
-      const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const dateObj = msg.timestamp ? new Date(msg.timestamp) : new Date();
+      const time = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       let content = `<div class="message-user">${msg.user}</div>`;
       if (msg.type === 'image') {
