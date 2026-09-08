@@ -295,18 +295,18 @@
       user-select: none;
     }
 
+    /* Пикер открывается ВНИЗ, чтобы не резаться шапкой */
     .reaction-picker {
       position: absolute;
-      bottom: -45px;
+      top: calc(100% + 6px);
       right: 0;
-      background: rgba(15, 23, 42, 0.98);
+      background: #1e1b4b;
       border: 1px solid rgba(255, 255, 255, 0.3);
-      backdrop-filter: blur(20px);
       border-radius: 20px;
       padding: 6px 10px;
       display: none;
       gap: 10px;
-      z-index: 150;
+      z-index: 90;
       box-shadow: 0 10px 25px rgba(0,0,0,0.7);
     }
 
@@ -863,8 +863,8 @@
 
     window.toggleReaction = function(messageId, emoji) {
       const msgIdStr = String(messageId);
-      socket.emit('toggle reaction', { roomId: currentRoomId, messageId: msgIdStr, emoji, user: currentUser });
-
+      
+      // Локальный мгновенный ответ интерфейса
       let msg = localMessagesMap.get(msgIdStr);
       if (msg) {
         msg.reactions = msg.reactions || {};
@@ -883,6 +883,9 @@
           if (reactionsBar) renderReactionsBar(reactionsBar, msgIdStr, msg.reactions);
         }
       }
+
+      // Отправка на сервер
+      socket.emit('toggle reaction', { roomId: currentRoomId, messageId: msgIdStr, emoji, user: currentUser });
     };
 
     socket.on('update reaction', ({ roomId, messageId, reactions }) => {
@@ -894,7 +897,7 @@
         const msgEl = document.querySelector(`.message[data-id="${msgIdStr}"]`);
         if (msgEl) {
           const reactionsBar = msgEl.querySelector('.reactions-bar');
-          if (reactionsBar) renderReactionsBar(reactionsBar, reactions || {});
+          if (reactionsBar) renderReactionsBar(reactionsBar, msgIdStr, reactions || {});
         }
       }
     });
