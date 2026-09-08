@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Семейный Чат</title>
   <style>
     * {
@@ -12,27 +12,33 @@
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
 
+    html, body {
+      height: 100%;
+      height: 100dvh;
+      width: 100%;
+      overflow: hidden;
+      background: #0f172a;
+    }
+
     body {
       background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #311042 100%);
       color: #f8fafc;
-      height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
-      overflow: hidden;
     }
 
     #app {
       width: 100%;
       max-width: 500px;
-      height: 100vh;
+      height: 100%;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
       position: relative;
       background: rgba(15, 23, 42, 0.6);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
-      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
     }
 
     /* Экран авторизации */
@@ -74,13 +80,6 @@
       font-size: 16px;
       outline: none;
       margin-bottom: 16px;
-      transition: all 0.3s ease;
-    }
-
-    input[type="text"]:focus {
-      border-color: #a855f7;
-      background: rgba(255, 255, 255, 0.12);
-      box-shadow: 0 0 15px rgba(168, 85, 247, 0.3);
     }
 
     .btn {
@@ -93,12 +92,6 @@
       font-size: 16px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.3s ease;
-      box-shadow: 0 4px 15px rgba(168, 85, 247, 0.4);
-    }
-
-    .btn:active {
-      transform: scale(0.98);
     }
 
     /* Экран чата */
@@ -106,18 +99,20 @@
       display: none;
       flex-direction: column;
       height: 100%;
+      height: 100dvh;
       position: relative;
     }
 
     /* Верхняя панель */
     #header {
       padding: 12px 16px;
-      background: rgba(15, 23, 42, 0.8);
+      background: rgba(15, 23, 42, 0.85);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       display: flex;
       justify-content: space-between;
       align-items: center;
       z-index: 10;
+      flex-shrink: 0;
     }
 
     #user-display {
@@ -141,11 +136,6 @@
       justify-content: center;
       color: white;
       cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .icon-btn:active {
-      background: rgba(255, 255, 255, 0.25);
     }
 
     .logout-btn {
@@ -162,11 +152,10 @@
     #messages {
       flex: 1;
       overflow-y: auto;
-      padding: 16px 16px 20px 16px;
+      padding: 16px;
       display: flex;
       flex-direction: column;
       gap: 12px;
-      margin-bottom: 90px; /* Запас высоты для панели ввода */
     }
 
     .message {
@@ -176,7 +165,6 @@
       font-size: 15px;
       line-height: 1.4;
       word-wrap: break-word;
-      position: relative;
       animation: fadeIn 0.2s ease-in-out;
     }
 
@@ -220,15 +208,9 @@
       display: block;
     }
 
-    /* Панель ввода сообщений */
+    /* Панель ввода */
     #input-area {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      z-index: 20;
-      max-width: 500px;
-      margin: 0 auto;
+      flex-shrink: 0;
       padding: 10px 12px calc(10px + env(safe-area-inset-bottom)) 12px;
       display: flex;
       gap: 8px;
@@ -262,20 +244,20 @@
       display: none;
     }
 
-    /* Раздел звонка */
+    /* Оверлей звонка */
     #call-overlay {
-      position: absolute;
+      position: fixed;
       top: 0;
       left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(15, 23, 42, 0.95);
-      backdrop-filter: blur(20px);
-      z-index: 100;
+      right: 0;
+      bottom: 0;
+      height: 100dvh;
+      background: rgba(15, 23, 42, 0.98);
+      z-index: 999;
       display: none;
       flex-direction: column;
       justify-content: space-between;
-      padding: 40px 20px;
+      padding: 40px 20px calc(30px + env(safe-area-inset-bottom)) 20px;
     }
 
     #call-status {
@@ -314,12 +296,13 @@
     .call-controls {
       display: flex;
       justify-content: center;
-      gap: 20px;
+      gap: 30px;
+      margin-bottom: 20px;
     }
 
     .call-action-btn {
-      width: 60px;
-      height: 60px;
+      width: 64px;
+      height: 64px;
       border-radius: 50%;
       border: none;
       color: white;
@@ -328,6 +311,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     }
 
     #accept-call-btn { background: #22c55e; }
@@ -454,7 +438,6 @@
       document.getElementById('user-display').innerText = `Вы: ${currentUser}`;
       socket.emit('register user', currentUser);
 
-      // Запрос на отправку браузерных уведомлений
       if ("Notification" in window && Notification.permission !== "granted") {
         Notification.requestPermission();
       }
@@ -465,7 +448,6 @@
       location.reload();
     });
 
-    // Отправка текстовых сообщений
     sendBtn.addEventListener('click', sendMessage);
     messageInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') sendMessage();
@@ -483,7 +465,6 @@
       }
     }
 
-    // Отправка фотографий
     photoBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -500,12 +481,10 @@
       }
     });
 
-    // Получение сообщения и вывод на экран
     socket.on('chat message', (msg) => {
       appendMessage(msg);
       scrollToBottom();
 
-      // Вывод уведомления при свернутой вкладке
       if (msg.user !== currentUser && document.hidden) {
         if ("Notification" in window && Notification.permission === "granted") {
           const notification = new Notification(`Сообщение от ${msg.user}`, {
