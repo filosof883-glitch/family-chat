@@ -805,6 +805,7 @@
     const chatScreen = document.getElementById('chat-screen');
     const usernameInput = document.getElementById('username-input');
     const loginSubmitBtn = document.getElementById('login-submit-btn');
+    const authForm = document.getElementById('auth-form');
     const avatarOptions = document.querySelectorAll('.avatar-option');
     
     const messagesDiv = document.getElementById('messages');
@@ -825,6 +826,162 @@
     const currentChatName = document.getElementById('current-chat-name');
     const chatSubtitle = document.getElementById('chat-subtitle');
     const logoutBtn = document.getElementById('logout-btn');
+
+    // Выбор аватара
+    avatarOptions.forEach(option => {
+      option.addEventListener('click', () => {
+        avatarOptions.forEach(opt => opt.classList.remove('selected'));
+        option.classList.add('selected');
+        selectedAvatar = option.dataset.avatar;
+      });
+    });
+
+    // Функция входа
+    function handleLogin() {
+      const name = usernameInput.value.trim();
+      if (!name) return;
+
+      currentUser = name;
+      localStorage.setItem('chat_username', currentUser);
+      localStorage.setItem('chat_avatar', selectedAvatar);
+
+      socket.emit('user-joined', { name: currentUser, avatar: selectedAvatar });
+
+      authScreen.style.display = 'none';
+      chatScreen.style.display = 'flex';
+
+      selectRoom('general', 'Общий чат');
+    }
+
+    // События входа
+    loginSubmitBtn.addEventListener('click', handleLogin);
+    authForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      handleLogin();
+    });
+
+    // Автоматический вход при сохраненном имени
+    if (currentUser) {
+      usernameInput.value = currentUser;
+      avatarOptions.forEach(opt => {
+        if (opt.dataset.avatar === selectedAvatar) {
+          opt.classList.add('selected');
+        } else {
+          opt.classList.remove('selected');
+        }
+      });
+      handleLogin();
+    }
+
+    // Выход из аккаунта
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('chat_username');
+      location.reload();
+    });
+
+    // Управление боковым меню
+    menuBtn.addEventListener('click', () => {
+      sidebar.classList.add('open');
+    });
+
+    closeSidebarBtn.addEventListener('click', () => {
+      sidebar.classList.remove('open');
+    });
+
+    // Переключение в личный чат с пользователем
+    function selectUserChat(username, avatar) {
+      selectedTargetUser = username;
+      currentRoom = null;
+      currentChatName.innerText = `${avatar || '👤'} ${username}`;
+      chatSubtitle.innerText = 'Личные сообщения';
+
+      document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+      sidebar.classList.remove('open');
+      messagesDiv.innerHTML = '';
+      socket.emit('get-history', { room: null, targetUser: selectedTargetUser, user: currentUser });
+    }
+
+    // Обновление списка участников
+    socket.on('users-list', (users) => {
+      usersListContainer.innerHTML = '';
+      users.forEach(u => {
+        if (u.name === currentUser) return;
+        const item = document.createElement('div');
+        item.className = `chat-item ${selectedTargetUser === u.name ? 'active' : ''}`;
+        item.innerHTML = `
+          <div class="user-item-info">
+            <span>${u.avatar || '👤'}</span>
+            <span>${escapeHtml(u.name)}</span>
+          </div>
+          <div class="status-dot"></div>
+        `;
+        item.addEventListener('click', () => {
+          selectUserChat(u.name, u.avatar);
+        });
+        usersListContainer.appendChild(item);
+      });
+    });
+
+    // Отправка сообщений по кнопке и Enter
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        sendMessage();
+      }
+    });
+
+    // Индикатор набора текста
+    let typingTimeout = null;
+    messageInput.addEventListener('input', () => {
+      socket.emit('typing', { user: currentUser, room: currentRoom, targetUser: selectedTargetUser });
+      clearTimeout(typingTimeout);
+      typingTimeout = setTimeout(() => {
+        socket.emit('stop-typing', { user: currentUser, room: currentRoom, targetUser: selectedTargetUser });
+      }, 1500);
+    });
+
+    socket.on('user-typing', (data) => {
+      if (data.user !== currentUser) {
+        typingIndicator.innerText = `${data.user} печатает...`;
+        typingIndicator.style.display = 'block';
+      }
+    });
+
+    socket.on('user-stop-typing', () => {
+      typingIndicator.style.display = 'none';
+    });
+
+    // Прием новых сообщений и истории
+    socket.on('chat message', (msg) => {
+      if (selectedTargetUser) {
+        if ((msg.user === currentUser && msg.targetUser === selectedTargetUser) ||
+            (msg.user === selectedTargetUser && msg.targetUser === currentUser)) {
+          appendMessage(msg);
+        }
+      } else if (msg.room === currentRoom && !msg.targetUser) {
+        appendMessage(msg);
+      }
+    });
+
+    socket.on('chat-history', (history) => {
+      messagesDiv.innerHTML = '';
+      history.forEach(msg => appendMessage(msg));
+    });
+
+    // Вспомогательные функции
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+      });
+    }
 
     // Toggle Emoji Picker
     emojiBtn.addEventListener('click', (e) => {
