@@ -12,63 +12,133 @@ const io = new Server(server, {
   }
 });
 
-// Отдача статики из папки public
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Карта пользователей: socketId -> { username, socketId }
-const activeUsers = new Map();
+// База данных в памяти
+const activeUsers = new Map(); // socketId -> { socketId, username, joinedAt }
+const messageHistory = []; // { id, from, to, text, timestamp, isPrivate }
+const MAX_HISTORY = 200;
 
-// Функция рассылки актуального списка пользователей
 function broadcastOnlineList() {
-  const usersArray = Array.from(activeUsers.values());
+  const usersArray = Array.from(activeUsers.values()).map(u => ({
+    username: u.username,
+    socketId: u.socketId,
+    joinedAt: u.joinedAt
+  }));
   io.emit('users-list', usersArray);
 }
 
 io.on('connection', (socket) => {
-  console.log(`[Socket] Новое подключение: ${socket.id}`);
+  console.log(`[Connect] Новое подключение: ${socket.id}`);
 
-  // Регистрация имени пользователя
+  // Регистрация пользователя
   socket.on('register-user', (username) => {
     try {
-      if (!username) return;
-      socket.username = username;
-      activeUsers.set(socket.id, { username, socketId: socket.id });
-      console.log(`[Auth] Зарегистрирован: ${username} (${socket.id})`);
+      if (!username || typeof username !== 'string') return;
+      
+      const cleanName = username.trim();
+      socket.username = cleanName;
+      
+      activeUsers.set(socket.id, {
+        socketId: socket.id,
+        username: cleanName,
+        joinedAt: new Date().toISOString()
+      });
+
+      console.log(`[Auth] Пользователь вошёл: ${cleanName} (${socket.id})`);
+      
+      // Отправляем подключившемуся историю общего чата
+      const publicHistory = messageHistory.filter(m => !m.isPrivate);
+      socket.emit('message-history', publicHistory);
+
+      // Оповещаем остальных в общем чате
+      socket.broadcast.emit('system-message', {
+        id: Date.now().toString(),
+        text: `Пользователь ${cleanName} вошёл в чат`,
+        timestamp: new Date().toISOString()
+      });
+
       broadcastOnlineList();
     } catch (err) {
-      console.error('Ошибка при register-user:', err);
+      console.error('Ошибка register-user:', err);
     }
   });
 
-  // Обработка статус-индикатора "печатает..."
-  socket.on('typing', (data) => {
-    try {
-      socket.broadcast.emit('typing', data);
-    } catch (err) {
-      console.error('Ошибка при typing:', err);
-    }
-  });
-
-  // Обработка текстовых сообщений
+  // Отправка текстовых и личных сообщений
   socket.on('chat message', (data) => {
     try {
+      if (!data || !data.text || !data.text.trim()) return;
+
       const payload = {
-        id: Date.now().toString(),
-        user: data.user || socket.username || 'Аноним',
-        text: data.text || '',
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+        from: socket.username || data.user || 'Аноним',
+        to: data.to || null, // null = общий чат
+        text: data.text.trim(),
+        isPrivate: !!data.to,
         timestamp: new Date().toISOString()
       };
-      io.emit('chat message', payload);
+
+      if (payload.isPrivate) {
+        // Личное сообщение: ищем сокет получателя
+        const targetEntry = Array.from(activeUsers.entries()).find(([_, u]) => u.username === payload.to);
+        if (targetEntry) {
+          // Отправляем получателю
+          io.to(targetEntry[0]).emit('chat message', payload);
+          // Отправляем себе обратно для подтверждения
+          socket.emit('chat message', payload);
+        } else {
+          socket.emit('system-message', {
+            id: Date.now().toString(),
+            text: `Пользователь ${payload.to} не в сети. Сообщение не доставлено.`,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } else {
+        // Сообщение в общий чат
+        messageHistory.push(payload);
+        if (messageHistory.length > MAX_HISTORY) messageHistory.shift();
+        io.emit('chat message', payload);
+      }
     } catch (err) {
-      console.error('Ошибка при chat message:', err);
+      console.error('Ошибка chat message:', err);
     }
   });
 
-  // --- WEBRTC ЗВОНКИ ---
+  // Индикатор статуса "печатает..."
+  socket.on('typing-start', (data) => {
+    try {
+      if (data && data.to) {
+        const targetEntry = Array.from(activeUsers.entries()).find(([_, u]) => u.username === data.to);
+        if (targetEntry) {
+          io.to(targetEntry[0]).emit('user-typing', { from: socket.username, isPrivate: true });
+        }
+      } else {
+        socket.broadcast.emit('user-typing', { from: socket.username, isPrivate: false });
+      }
+    } catch (err) {
+      console.error('Ошибка typing-start:', err);
+    }
+  });
+
+  socket.on('typing-stop', (data) => {
+    try {
+      if (data && data.to) {
+        const targetEntry = Array.from(activeUsers.entries()).find(([_, u]) => u.username === data.to);
+        if (targetEntry) {
+          io.to(targetEntry[0]).emit('user-stop-typing', { from: socket.username });
+        }
+      } else {
+        socket.broadcast.emit('user-stop-typing', { from: socket.username });
+      }
+    } catch (err) {
+      console.error('Ошибка typing-stop:', err);
+    }
+  });
+
+  // --- WEBRTC СИГНАЛИНГ ---
   socket.on('call-user', (data) => {
     try {
       if (!data || !data.targetUser) return;
-      
       const targetEntry = Array.from(activeUsers.entries()).find(([_, u]) => u.username === data.targetUser);
       if (targetEntry) {
         io.to(targetEntry[0]).emit('incoming-call', {
@@ -78,10 +148,10 @@ io.on('connection', (socket) => {
           isVideo: !!data.isVideo
         });
       } else {
-        socket.emit('call-failed', { reason: 'Пользователь не в сети' });
+        socket.emit('call-failed', { reason: 'Пользователь вышел из сети' });
       }
     } catch (err) {
-      console.error('Ошибка при call-user:', err);
+      console.error('Ошибка call-user:', err);
     }
   });
 
@@ -94,7 +164,7 @@ io.on('connection', (socket) => {
         });
       }
     } catch (err) {
-      console.error('Ошибка при make-answer:', err);
+      console.error('Ошибка make-answer:', err);
     }
   });
 
@@ -107,7 +177,7 @@ io.on('connection', (socket) => {
         });
       }
     } catch (err) {
-      console.error('Ошибка при ice-candidate:', err);
+      console.error('Ошибка ice-candidate:', err);
     }
   });
 
@@ -117,32 +187,31 @@ io.on('connection', (socket) => {
         io.to(data.targetSocketId).emit('call-ended');
       }
     } catch (err) {
-      console.error('Ошибка при end-call:', err);
+      console.error('Ошибка end-call:', err);
     }
   });
 
-  // Отключение клиента
+  // Отключение
   socket.on('disconnect', () => {
     try {
+      if (socket.username) {
+        io.emit('system-message', {
+          id: Date.now().toString(),
+          text: `Пользователь ${socket.username} вышел из чата`,
+          timestamp: new Date().toISOString()
+        });
+      }
       activeUsers.delete(socket.id);
       broadcastOnlineList();
-      console.log(`[Socket] Отключен: ${socket.id}`);
+      console.log(`[Disconnect] Отключен: ${socket.id}`);
     } catch (err) {
-      console.error('Ошибка при disconnect:', err);
+      console.error('Ошибка disconnect:', err);
     }
   });
 });
 
-// Предотвращение падения Node.js процесса (защита от 502 Bad Gateway)
-process.on('uncaughtException', (err) => {
-  console.error('КРИТИЧЕСКИЙ СБОЙ (uncaughtException):', err);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('КРИТИЧЕСКИЙ СБОЙ (unhandledRejection):', promise, 'причина:', reason);
-});
+process.on('uncaughtException', (err) => console.error('CRITICAL ERROR:', err));
+process.on('unhandledRejection', (reason, p) => console.error('UNHANDLED PROMISE:', p, 'reason:', reason));
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Сервер успешно запущен на порту ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Сервер работает на порту ${PORT}`));
