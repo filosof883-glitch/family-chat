@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -1471,3 +1472,840 @@
         }
         broadcastPresence();
         setInterval(broadcastPresence, 4000);
+        return;
+      }
+
+      try {
+        myPeer = new Peer(myPeerId, {
+          debug: 1,
+          config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:stun2.l.google.com:19302' }
+            ]
+          }
+        });
+
+        myPeer.on('open', (id) => {
+          if (chatStatusText) {
+            chatStatusText.innerText = 'P2P Сеть активна';
+            chatStatusText.style.color = '#4ade80';
+          }
+          broadcastPresence();
+          setInterval(broadcastPresence, 4000); 
+        });
+
+        myPeer.on('connection', (conn) => {
+          setupDataConnection(conn);
+        });
+
+        myPeer.on('call', (call) => {
+          handleIncomingMediaCall(call);
+        });
+
+        myPeer.on('error', (err) => {
+          if (chatStatusText) {
+            chatStatusText.innerText = 'Локальный режим (BroadcastChannel)';
+            chatStatusText.style.color = '#f59e0b';
+          }
+        });
+      } catch (err) {
+        if (chatStatusText) {
+          chatStatusText.innerText = 'Локальный режим (BroadcastChannel)';
+          chatStatusText.style.color = '#f59e0b';
+        }
+        broadcastPresence();
+        setInterval(broadcastPresence, 4000);
+      }
+    }
+
+    function broadcastPresence() {
+      const payload = {
+        type: 'presence',
+        user: currentUser,
+        avatar: selectedAvatar,
+        photo: userPhoto,
+        role: userRole,
+        dob: userDob,
+        bio: userBio,
+        peerId: getPeerId(currentUser, familyCode),
+        timestamp: Date.now()
+      };
+
+      broadcastChan.postMessage(payload);
+
+      Object.values(peerConnections).forEach(conn => {
+        if (conn.open) conn.send(payload);
+      });
+
+      ['Мама', 'Папа', 'Дочка', 'Сын', 'Бабушка', 'Дедушка'].forEach(famName => {
+        if (famName !== currentUser) {
+          const targetPeerId = getPeerId(famName, familyCode);
+          if (!peerConnections[targetPeerId]) {
+            connectToPeer(targetPeerId);
+          }
+        }
+      });
+
+      cleanOfflineUsers();
+    }
+
+    function connectToPeer(targetPeerId) {
+      if (!myPeer || myPeer.destroyed || peerConnections[targetPeerId]) return;
+      try {
+        const conn = myPeer.connect(targetPeerId, { reliable: true });
+        setupDataConnection(conn);
+      } catch(e){}
+    }
+
+    function setupDataConnection(conn) {
+      peerConnections[conn.peer] = conn;
+
+      conn.on('open', () => {
+        conn.send({
+          type: 'presence',
+          user: currentUser,
+          avatar: selectedAvatar,
+          photo: userPhoto,
+          role: userRole,
+          dob: userDob,
+          bio: userBio,
+          peerId: myPeer ? myPeer.id : getPeerId(currentUser, familyCode),
+          timestamp: Date.now()
+        });
+      });
+
+      conn.on('data', (data) => {
+        handleIncomingData(data);
+      });
+
+      conn.on('close', () => {
+        delete peerConnections[conn.peer];
+      });
+    }
+
+    function handleIncomingData(data) {
+      if (!data || !data.type) return;
+
+      if (data.type === 'presence') {
+        if (data.user && data.user !== currentUser) {
+          onlineUsers[data.user] = {
+            name: data.user,
+            avatar: data.avatar || '👤',
+            photo: data.photo || '',
+            role: data.role || 'Член семьи',
+            dob: data.dob || '',
+            bio: data.bio || '',
+            peerId: data.peerId,
+            lastSeen: Date.now()
+          };
+          renderUsersList();
+        }
+      } else if (data.type === 'message') {
+        const msg = data.message;
+        if (!messagesHistory.some(m => m.id === msg.id)) {
+          messagesHistory.push(msg);
+          saveMessagesHistory();
+          if (shouldShowMsg(msg)) appendMessageUI(msg);
+        }
+      } else if (data.type === 'delete-message') {
+        messagesHistory = messagesHistory.filter(m => m.id !== data.messageId);
+        saveMessagesHistory();
+        renderMessages();
+      } else if (data.type === 'reaction') {
+        const msg = messagesHistory.find(m => m.id === data.messageId);
+        if (msg) {
+          if (!msg.reactions) msg.reactions = {};
+          msg.reactions[data.user] = data.emoji;
+          saveMessagesHistory();
+          const msgEl = document.getElementById(`msg-${data.messageId}`);
+          if (msgEl) updateReactionsUI(msgEl, msg.reactions, msg.id);
+        }
+      } else if (data.type === 'typing') {
+        if (data.user !== currentUser) {
+          typingIndicator.innerText = `${data.user} печатает...`;
+          typingIndicator.style.display = 'block';
+          clearTimeout(window.typingTimeout);
+          window.typingTimeout = setTimeout(() => { typingIndicator.style.display = 'none'; }, 2000);
+        }
+      } else if (data.type === 'end-call') {
+        endCall(false);
+      }
+    }
+
+    function cleanOfflineUsers() {
+      const now = Date.now();
+      let updated = false;
+      Object.keys(onlineUsers).forEach(u => {
+        if (now - onlineUsers[u].lastSeen > 12000) {
+          delete onlineUsers[u];
+          updated = true;
+        }
+      });
+      if (updated) renderUsersList();
+    }
+
+    function renderUsersList() {
+      usersListContainer.innerHTML = '';
+      const users = Object.values(onlineUsers);
+      
+      if (users.length === 0) {
+        usersListContainer.innerHTML = `<div style="font-size: 12px; color: rgba(255,255,255,0.4); padding: 6px;">Пока нет других участников</div>`;
+        return;
+      }
+
+      users.forEach(u => {
+        const item = document.createElement('div');
+        item.className = `chat-item ${selectedTargetUser === u.name ? 'active' : ''}`;
+        
+        let avatarHTML = `<span>${u.avatar || '👤'}</span>`;
+        if (u.photo) {
+          avatarHTML = `<img src="${u.photo}" class="user-avatar-img" alt="avatar">`;
+        }
+
+        item.innerHTML = `
+          <div class="user-item-info">
+            ${avatarHTML}
+            <div style="display: flex; flex-direction: column;">
+              <span>${escapeHtml(u.name)}</span>
+              <span style="font-size: 10px; opacity: 0.6;">${escapeHtml(u.role || 'Член семьи')}</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button class="action-btn view-p-btn" title="Профиль">ℹ️</button>
+            <div class="status-dot"></div>
+          </div>
+        `;
+
+        item.querySelector('.view-p-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          openUserProfileModal(u.name);
+        });
+
+        item.addEventListener('click', () => {
+          selectUserChat(u.name, u.avatar);
+        });
+        usersListContainer.appendChild(item);
+      });
+    }
+
+    function updateProfilePreview() {
+      if (userPhoto) {
+        profilePhotoPreview.innerHTML = `<img src="${userPhoto}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+      } else {
+        profilePhotoPreview.innerHTML = selectedAvatar || '👤';
+      }
+    }
+
+    openMyProfileBtn.addEventListener('click', () => {
+      profileRoleInput.value = userRole;
+      profileDobInput.value = userDob;
+      profileBioInput.value = userBio;
+      updateProfilePreview();
+      profileModal.style.display = 'flex';
+    });
+
+    closeProfileModal.addEventListener('click', () => {
+      profileModal.style.display = 'none';
+    });
+
+    profilePhotoInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        userPhoto = await readFileAsBase64(file);
+        localStorage.setItem('chat_user_photo', userPhoto);
+        updateProfilePreview();
+      }
+    });
+
+    saveProfileBtn.addEventListener('click', () => {
+      userRole = profileRoleInput.value;
+      userDob = profileDobInput.value;
+      userBio = profileBioInput.value.trim();
+
+      localStorage.setItem('chat_user_role', userRole);
+      localStorage.setItem('chat_user_dob', userDob);
+      localStorage.setItem('chat_user_bio', userBio);
+
+      profileModal.style.display = 'none';
+      showToast('Профиль успешно обновлен!');
+      broadcastPresence();
+    });
+
+    function openUserProfileModal(username) {
+      const u = onlineUsers[username];
+      if (!u) {
+        showToast('Пользователь не найден');
+        return;
+      }
+
+      viewUserName.innerText = u.name;
+      viewUserRole.innerText = u.role || 'Член семьи';
+      viewUserBio.innerText = u.bio ? u.bio : 'Информация не указана';
+
+      if (u.photo) {
+        viewUserAvatar.innerHTML = `<img src="${u.photo}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+      } else {
+        viewUserAvatar.innerHTML = u.avatar || '👤';
+      }
+
+      if (u.dob) {
+        const dobDate = new Date(u.dob);
+        const age = Math.floor((new Date() - dobDate) / (365.25 * 24 * 60 * 60 * 1000));
+        const formattedDate = dobDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+        viewUserDob.innerText = `${formattedDate} (${age} лет)`;
+      } else {
+        viewUserDob.innerText = 'Не указана';
+      }
+
+      viewUserCallBtn.onclick = () => {
+        viewProfileModal.style.display = 'none';
+        selectUserChat(u.name, u.avatar);
+        startCall('video');
+      };
+
+      viewProfileModal.style.display = 'flex';
+    }
+
+    closeViewProfileModal.addEventListener('click', () => {
+      viewProfileModal.style.display = 'none';
+    });
+
+    function openSidebar() {
+      sidebar.classList.add('open');
+      sidebarOverlay.classList.add('active');
+    }
+
+    function closeSidebar() {
+      sidebar.classList.remove('open');
+      sidebarOverlay.classList.remove('active');
+    }
+
+    menuBtn.addEventListener('click', openSidebar);
+    closeSidebarBtn.addEventListener('click', closeSidebar);
+    sidebarOverlay.addEventListener('click', closeSidebar);
+
+    function selectUserChat(username, avatar) {
+      selectedTargetUser = username;
+      currentRoom = null;
+      currentChatName.innerText = `${avatar || '👤'} ${username}`;
+      chatStatusText.innerText = 'Личные сообщения';
+
+      document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+      closeSidebar();
+      renderMessages();
+    }
+
+    function selectRoom(roomId, roomName) {
+      currentRoom = roomId;
+      selectedTargetUser = null;
+      currentChatName.innerText = roomName;
+      chatStatusText.innerText = 'Общение со всей семьей';
+      
+      document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+      const activeEl = document.querySelector(`[data-room="${roomId}"]`);
+      if (activeEl) activeEl.classList.add('active');
+      
+      closeSidebar();
+      renderMessages();
+    }
+
+    createRoomBtn.addEventListener('click', () => {
+      const roomName = prompt('Введите название новой комнаты:');
+      if (roomName && roomName.trim()) {
+        const newRoom = { id: 'room_' + Date.now(), name: roomName.trim(), icon: '🏠' };
+        roomsList.push(newRoom);
+        localStorage.setItem('chat_rooms_list', JSON.stringify(roomsList));
+        renderRooms();
+        selectRoom(newRoom.id, newRoom.name);
+      }
+    });
+
+    function renderRooms() {
+      roomsListContainer.innerHTML = '';
+      roomsList.forEach(room => {
+        const item = document.createElement('div');
+        item.className = `chat-item ${currentRoom === room.id && !selectedTargetUser ? 'active' : ''}`;
+        item.dataset.room = room.id;
+        item.innerHTML = `
+          <div class="user-item-info">
+            <span>${room.icon}</span>
+            <span>${escapeHtml(room.name)}</span>
+          </div>
+        `;
+        item.addEventListener('click', () => selectRoom(room.id, room.name));
+        roomsListContainer.appendChild(item);
+      });
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    messageInput.addEventListener('input', () => {
+      broadcastData({ type: 'typing', user: currentUser });
+    });
+
+    async function sendMessage() {
+      const text = messageInput.value.trim();
+      const file = fileInput.files[0];
+
+      if (!text && !file) return;
+
+      let fileData = null;
+      if (file) {
+        fileData = {
+          name: file.name,
+          type: file.type,
+          data: await readFileAsBase64(file)
+        };
+      }
+
+      const newMsg = {
+        id: Date.now().toString() + '_' + Math.random().toString(36).substring(2, 6),
+        user: currentUser,
+        avatar: selectedAvatar,
+        text: text,
+        file: fileData,
+        targetUser: selectedTargetUser,
+        room: currentRoom,
+        reactions: {},
+        timestamp: Date.now()
+      };
+
+      messagesHistory.push(newMsg);
+      saveMessagesHistory();
+
+      appendMessageUI(newMsg);
+      broadcastData({ type: 'message', message: newMsg });
+
+      messageInput.value = '';
+      fileInput.value = '';
+      emojiPicker.style.display = 'none';
+    }
+
+    function broadcastData(payload) {
+      broadcastChan.postMessage(payload);
+      Object.values(peerConnections).forEach(conn => {
+        if (conn.open) conn.send(payload);
+      });
+    }
+
+    function saveMessagesHistory() {
+      try {
+        localStorage.setItem(`chat_msgs_${familyCode}`, JSON.stringify(messagesHistory.slice(-200)));
+      } catch(e){}
+    }
+
+    function shouldShowMsg(msg) {
+      if (selectedTargetUser) {
+        return (msg.user === currentUser && msg.targetUser === selectedTargetUser) ||
+               (msg.user === selectedTargetUser && msg.targetUser === currentUser);
+      } else {
+        return msg.room === currentRoom && !msg.targetUser;
+      }
+    }
+
+    function renderMessages() {
+      messagesDiv.innerHTML = '';
+      const filtered = messagesHistory.filter(m => shouldShowMsg(m));
+
+      if (filtered.length === 0) {
+        const emptyDiv = document.createElement('div');
+        emptyDiv.className = 'empty-chat-placeholder';
+        const isPrivate = !!selectedTargetUser;
+        emptyDiv.innerHTML = `
+          <div class="empty-chat-icon">${isPrivate ? '💬' : '🏡'}</div>
+          <div class="empty-chat-title">${isPrivate ? 'Личный диалог' : 'Семейный чат'}</div>
+          <div class="empty-chat-desc">${isPrivate ? 'Напишите сообщение, чтобы начать диалог с ' + escapeHtml(selectedTargetUser) : 'В этом чате пока нет сообщений. Напишите первое!'}</div>
+        `;
+        messagesDiv.appendChild(emptyDiv);
+        return;
+      }
+
+      filtered.forEach(msg => appendMessageUI(msg));
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function appendMessageUI(msg) {
+      if (!shouldShowMsg(msg)) return;
+
+      const placeholder = messagesDiv.querySelector('.empty-chat-placeholder');
+      if (placeholder) placeholder.remove();
+
+      const isOwn = msg.user === currentUser;
+      const msgEl = document.createElement('div');
+      msgEl.className = `message ${isOwn ? 'own' : 'other'}`;
+      msgEl.id = `msg-${msg.id}`;
+
+      const time = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      let fileHTML = '';
+      if (msg.file) {
+        if (msg.file.type && msg.file.type.startsWith('image/')) {
+          fileHTML = `<div class="message-file"><img src="${msg.file.data}" alt="attachment"></div>`;
+        } else {
+          fileHTML = `<div class="message-file"><a class="file-download-btn" href="${msg.file.data}" download="${escapeHtml(msg.file.name)}">💾 ${escapeHtml(msg.file.name)}</a></div>`;
+        }
+      }
+
+      const actionsHTML = `
+        <div class="message-actions">
+          <button class="action-btn react-btn" title="Реакция">❤️</button>
+          ${isOwn ? `<button class="action-btn delete-btn" title="Удалить">🗑️</button>` : ''}
+        </div>
+      `;
+
+      msgEl.innerHTML = `
+        <div class="message-header-row">
+          <div class="message-user">${escapeHtml(msg.user)}</div>
+          ${actionsHTML}
+        </div>
+        <div>${escapeHtml(msg.text)}</div>
+        ${fileHTML}
+        <div class="reactions-bar"></div>
+        <div class="message-time">${time}</div>
+      `;
+
+      const reactBtn = msgEl.querySelector('.react-btn');
+      reactBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showReactionPopover(msgEl, msg.id);
+      });
+
+      if (isOwn) {
+        const deleteBtn = msgEl.querySelector('.delete-btn');
+        deleteBtn.addEventListener('click', () => {
+          messagesHistory = messagesHistory.filter(m => m.id !== msg.id);
+          saveMessagesHistory();
+          msgEl.remove();
+          broadcastData({ type: 'delete-message', messageId: msg.id });
+          if (messagesHistory.filter(m => shouldShowMsg(m)).length === 0) {
+            renderMessages();
+          }
+        });
+      }
+
+      updateReactionsUI(msgEl, msg.reactions || {}, msg.id);
+
+      messagesDiv.appendChild(msgEl);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function showReactionPopover(msgEl, messageId) {
+      let popover = msgEl.querySelector('.reaction-popover');
+      if (popover) {
+        popover.remove();
+        msgEl.classList.remove('active-popover');
+        return;
+      }
+
+      document.querySelectorAll('.reaction-popover').forEach(p => p.remove());
+      document.querySelectorAll('.message').forEach(m => m.classList.remove('active-popover'));
+
+      msgEl.classList.add('active-popover');
+
+      popover = document.createElement('div');
+      popover.className = 'reaction-popover';
+
+      const msgRect = msgEl.getBoundingClientRect();
+      const messagesRect = messagesDiv.getBoundingClientRect();
+
+      if (msgRect.top - messagesRect.top < 70) {
+        popover.classList.add('popover-bottom');
+      } else {
+        popover.classList.add('popover-top');
+      }
+
+      ['👍', '❤️', '😂', '😮', '😢', '🎉'].forEach(emoji => {
+        const span = document.createElement('span');
+        span.innerText = emoji;
+        span.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const msg = messagesHistory.find(m => m.id === messageId);
+          if (msg) {
+            if (!msg.reactions) msg.reactions = {};
+            msg.reactions[currentUser] = emoji;
+            saveMessagesHistory();
+            updateReactionsUI(msgEl, msg.reactions, messageId);
+            broadcastData({ type: 'reaction', messageId, emoji, user: currentUser });
+          }
+          popover.remove();
+          msgEl.classList.remove('active-popover');
+        });
+        popover.appendChild(span);
+      });
+
+      msgEl.appendChild(popover);
+    }
+
+    function updateReactionsUI(msgEl, reactions, messageId) {
+      const reactionsBar = msgEl.querySelector('.reactions-bar');
+      if (!reactionsBar) return;
+      reactionsBar.innerHTML = '';
+
+      const counts = {};
+      Object.entries(reactions).forEach(([user, emoji]) => {
+        if (!counts[emoji]) counts[emoji] = { count: 0, users: [] };
+        counts[emoji].count++;
+        counts[emoji].users.push(user);
+      });
+
+      Object.entries(counts).forEach(([emoji, data]) => {
+        const badge = document.createElement('div');
+        const hasReacted = data.users.includes(currentUser);
+        badge.className = `reaction-badge ${hasReacted ? 'active' : ''}`;
+        badge.innerHTML = `<span>${emoji}</span> <span>${data.count}</span>`;
+        badge.title = data.users.join(', ');
+        reactionsBar.appendChild(badge);
+      });
+    }
+
+    emojiBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'grid' : 'none';
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
+        emojiPicker.style.display = 'none';
+      }
+      if (!e.target.closest('.reaction-popover') && !e.target.closest('.react-btn')) {
+        document.querySelectorAll('.reaction-popover').forEach(p => p.remove());
+        document.querySelectorAll('.message').forEach(m => m.classList.remove('active-popover'));
+      }
+    });
+
+    document.querySelectorAll('.emoji-item').forEach(item => {
+      item.addEventListener('click', () => {
+        messageInput.value += item.innerText;
+        messageInput.focus();
+      });
+    });
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    audioCallBtn.addEventListener('click', () => startCall('audio'));
+    videoCallBtn.addEventListener('click', () => startCall('video'));
+
+    async function startCall(type) {
+      if (!selectedTargetUser) {
+        showToast('Выберите конкретного участника онлайн для звонка');
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showToast('Для видео/аудио вызовов требуется HTTPS');
+        return;
+      }
+
+      const targetInfo = onlineUsers[selectedTargetUser];
+      if (!targetInfo || !targetInfo.peerId) {
+        showToast(`${selectedTargetUser} не в сети для WebRTC вызова`);
+        return;
+      }
+
+      callStatus.innerText = type === 'audio' ? 'Исходящий аудиозвонок...' : 'Исходящий видеозвонок...';
+      callUserName.innerText = `${targetInfo.avatar || '👤'} ${selectedTargetUser}`;
+      callOverlay.style.display = 'flex';
+      acceptCallBtn.style.display = 'none';
+
+      setupCallUI(type);
+      startRingtone();
+
+      try {
+        localMediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: type === 'video'
+        });
+
+        if (type === 'video') localVideo.srcObject = localMediaStream;
+
+        activeCall = myPeer.call(targetInfo.peerId, localMediaStream, {
+          metadata: { type, callerName: currentUser, callerAvatar: selectedAvatar }
+        });
+
+        handleCallStream(activeCall, type);
+
+      } catch (err) {
+        stopRingtone();
+        showToast('Ошибка доступа к микрофону/камере');
+        endCall(true);
+      }
+    }
+
+    function handleIncomingMediaCall(call) {
+      activeCall = call;
+      const metadata = call.metadata || {};
+      const callType = metadata.type || 'video';
+      const callerName = metadata.callerName || 'Участник семьи';
+      const callerAvatar = metadata.callerAvatar || '👤';
+
+      startRingtone();
+
+      callStatus.innerText = callType === 'audio' ? 'Входящий аудиозвонок' : 'Входящий видеозвонок';
+      callUserName.innerText = `${callerAvatar} ${callerName}`;
+      callOverlay.style.display = 'flex';
+      acceptCallBtn.style.display = 'flex';
+
+      setupCallUI(callType);
+
+      acceptCallBtn.onclick = async () => {
+        acceptCallBtn.style.display = 'none';
+        stopRingtone();
+        callStatus.innerText = 'Соединение...';
+
+        try {
+          localMediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: callType === 'video'
+          });
+
+          if (callType === 'video') localVideo.srcObject = localMediaStream;
+
+          call.answer(localMediaStream);
+          handleCallStream(call, callType);
+
+        } catch (err) {
+          showToast('Не удалось открыть микрофон/камеру');
+          endCall(true);
+        }
+      };
+    }
+
+    function handleCallStream(call, type) {
+      call.on('stream', (remoteStream) => {
+        stopRingtone();
+        callStatus.innerText = 'Разговор';
+        startCallTimer();
+
+        if (type === 'video') {
+          remoteVideo.srcObject = remoteStream;
+        } else {
+          const remoteAudio = new Audio();
+          remoteAudio.srcObject = remoteStream;
+          remoteAudio.play();
+        }
+      });
+
+      call.on('close', () => endCall(false));
+      call.on('error', () => endCall(false));
+    }
+
+    function setupCallUI(type) {
+      if (type === 'audio') {
+        remoteVideo.style.display = 'none';
+        localVideo.style.display = 'none';
+        audioAvatar.style.display = 'flex';
+        toggleCamBtn.style.display = 'none';
+        callAvatarIcon.innerText = selectedAvatar || '👤';
+      } else {
+        remoteVideo.style.display = 'block';
+        localVideo.style.display = 'block';
+        audioAvatar.style.display = 'none';
+        toggleCamBtn.style.display = 'flex';
+      }
+    }
+
+    toggleMicBtn.addEventListener('click', () => {
+      if (localMediaStream) {
+        const track = localMediaStream.getAudioTracks()[0];
+        if (track) {
+          isAudioMuted = !isAudioMuted;
+          track.enabled = !isAudioMuted;
+          toggleMicBtn.classList.toggle('off', isAudioMuted);
+          toggleMicBtn.innerText = isAudioMuted ? '🔇' : '🎙️';
+        }
+      }
+    });
+
+    toggleCamBtn.addEventListener('click', () => {
+      if (localMediaStream) {
+        const track = localMediaStream.getVideoTracks()[0];
+        if (track) {
+          isVideoMuted = !isVideoMuted;
+          track.enabled = !isVideoMuted;
+          toggleCamBtn.classList.toggle('off', isVideoMuted);
+          toggleCamBtn.innerText = isVideoMuted ? '🚫' : '📷';
+        }
+      }
+    });
+
+    endCallBtn.addEventListener('click', () => endCall(true));
+
+    function endCall(notify = true) {
+      stopRingtone();
+      if (notify) broadcastData({ type: 'end-call' });
+
+      if (activeCall) {
+        try { activeCall.close(); } catch(e){}
+        activeCall = null;
+      }
+
+      if (localMediaStream) {
+        localMediaStream.getTracks().forEach(track => track.stop());
+        localMediaStream = null;
+      }
+
+      remoteVideo.srcObject = null;
+      localVideo.srcObject = null;
+      callOverlay.style.display = 'none';
+      stopCallTimer();
+
+      isAudioMuted = false;
+      isVideoMuted = false;
+      toggleMicBtn.classList.remove('off');
+      toggleCamBtn.classList.remove('off');
+      toggleMicBtn.innerText = '🎙️';
+      toggleCamBtn.innerText = '📷';
+    }
+
+    function startCallTimer() {
+      callSeconds = 0;
+      callTimer.innerText = '00:00';
+      clearInterval(callTimerInterval);
+      callTimerInterval = setInterval(() => {
+        callSeconds++;
+        const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+        const secs = String(callSeconds % 60).padStart(2, '0');
+        callTimer.innerText = `${mins}:${secs}`;
+      }, 1000);
+    }
+
+    function stopCallTimer() {
+      clearInterval(callTimerInterval);
+      callTimer.innerText = '00:00';
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (currentUser && familyCode) {
+        usernameInput.value = currentUser;
+        familyIdInput.value = familyCode;
+        authScreen.style.display = 'none';
+        chatScreen.style.display = 'flex';
+        initPeerJS();
+        renderRooms();
+        renderMessages();
+      }
+    });
+  </script>
+</body>
+</html>
+```
