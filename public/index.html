@@ -378,6 +378,138 @@
       margin-top: 4px;
     }
 
+    /* MESSAGE ACTIONS & REACTIONS */
+    .message-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .message-actions {
+      display: flex;
+      gap: 6px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+
+    .message:hover .message-actions {
+      opacity: 1;
+    }
+
+    .action-btn {
+      background: rgba(255, 255, 255, 0.15);
+      border: none;
+      border-radius: 8px;
+      padding: 2px 6px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #fff;
+      transition: background 0.2s;
+    }
+
+    .action-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .reactions-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .reaction-badge {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px;
+      padding: 2px 8px;
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s;
+    }
+
+    .reaction-badge.active {
+      border-color: #a855f7;
+      background: rgba(168, 85, 247, 0.3);
+    }
+
+    .reaction-popover {
+      position: absolute;
+      bottom: 100%;
+      right: 0;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 6px 10px;
+      display: flex;
+      gap: 6px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 40;
+    }
+
+    .reaction-popover span {
+      cursor: pointer;
+      font-size: 18px;
+      transition: transform 0.15s;
+    }
+
+    .reaction-popover span:hover {
+      transform: scale(1.3);
+    }
+
+    /* EMOJI PICKER */
+    #emoji-picker {
+      position: absolute;
+      bottom: 70px;
+      left: 16px;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 20px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      z-index: 100;
+    }
+
+    .emoji-item {
+      font-size: 22px;
+      cursor: pointer;
+      text-align: center;
+      padding: 4px;
+      border-radius: 8px;
+      transition: background 0.15s;
+    }
+
+    .emoji-item:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .create-room-btn {
+      width: 100%;
+      margin: 10px 0;
+      padding: 10px;
+      background: rgba(168, 85, 247, 0.2);
+      border: 1px dashed rgba(168, 85, 247, 0.5);
+      border-radius: 12px;
+      color: #e9d5ff;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .create-room-btn:hover {
+      background: rgba(168, 85, 247, 0.35);
+    }
+
     .message-time {
       font-size: 10px;
       opacity: 0.6;
@@ -583,14 +715,19 @@
           <button class="icon-btn" id="close-sidebar-btn">✖</button>
         </div>
 
-        <div class="chat-item active" id="general-chat-btn">
-          <div class="user-item-info">
-            <span>💬</span>
-            <span>Общий чат</span>
+        <button class="create-room-btn" id="create-room-btn">➕ Создать чат</button>
+
+        <div class="sidebar-section">Каналы:</div>
+        <div id="rooms-list">
+          <div class="chat-item active" data-room="general">
+            <div class="user-item-info">
+              <span>💬</span>
+              <span>Общий чат</span>
+            </div>
           </div>
         </div>
 
-        <div class="sidebar-section">В сети:</div>
+        <div class="sidebar-section">Участники:</div>
         <div id="users-list"></div>
 
         <button class="btn" id="logout-btn" style="margin-top: auto; background: rgba(239, 68, 68, 0.2); color: #fca5a5;">Сменить имя</button>
@@ -600,8 +737,31 @@
       <div id="messages"></div>
       <div id="typing-indicator"></div>
 
+      <!-- EMOJI PICKER POPOVER -->
+      <div id="emoji-picker" style="display: none;">
+        <span class="emoji-item">😀</span>
+        <span class="emoji-item">😂</span>
+        <span class="emoji-item">😍</span>
+        <span class="emoji-item">😎</span>
+        <span class="emoji-item">👍</span>
+        <span class="emoji-item">❤️</span>
+        <span class="emoji-item">🎉</span>
+        <span class="emoji-item">🔥</span>
+        <span class="emoji-item">🙌</span>
+        <span class="emoji-item">🥳</span>
+        <span class="emoji-item">🙏</span>
+        <span class="emoji-item">💡</span>
+        <span class="emoji-item">🏡</span>
+        <span class="emoji-item">🛒</span>
+        <span class="emoji-item">🍕</span>
+        <span class="emoji-item">⭐</span>
+        <span class="emoji-item">😮</span>
+        <span class="emoji-item">😢</span>
+      </div>
+
       <!-- INPUT AREA -->
       <div id="input-area">
+        <button class="icon-btn" id="emoji-btn" type="button" title="Вставить эмодзи">😊</button>
         <label for="file-input" id="file-btn" title="Прикрепить файл">📎</label>
         <input type="file" id="file-input">
         <input type="text" id="message-input" placeholder="Сообщение..." autocomplete="off">
@@ -637,7 +797,8 @@
     
     let currentUser = localStorage.getItem('chat_username') || '';
     let selectedAvatar = localStorage.getItem('chat_avatar') || '👨‍👩‍👧‍👦';
-    let selectedTargetUser = null; // null = Общий чат
+    let currentRoom = 'general';
+    let selectedTargetUser = null; // null = Чат комнаты, иначе имя собеседника
 
     // DOM Elements
     const authScreen = document.getElementById('auth-screen');
@@ -652,124 +813,79 @@
     const sendBtn = document.getElementById('send-btn');
     const typingIndicator = document.getElementById('typing-indicator');
 
+    const emojiBtn = document.getElementById('emoji-btn');
+    const emojiPicker = document.getElementById('emoji-picker');
+    const createRoomBtn = document.getElementById('create-room-btn');
+    const roomsListContainer = document.getElementById('rooms-list');
+
     const sidebar = document.getElementById('sidebar');
     const menuBtn = document.getElementById('menu-btn');
     const closeSidebarBtn = document.getElementById('close-sidebar-btn');
     const usersListContainer = document.getElementById('users-list');
     const currentChatName = document.getElementById('current-chat-name');
     const chatSubtitle = document.getElementById('chat-subtitle');
-    const generalChatBtn = document.getElementById('general-chat-btn');
     const logoutBtn = document.getElementById('logout-btn');
 
-    // Avatar selector logic
-    avatarOptions.forEach(opt => {
-      opt.addEventListener('click', () => {
-        avatarOptions.forEach(o => o.classList.remove('selected'));
-        opt.classList.add('selected');
-        selectedAvatar = opt.dataset.avatar;
+    // Toggle Emoji Picker
+    emojiBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'grid' : 'none';
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
+        emojiPicker.style.display = 'none';
+      }
+    });
+
+    document.querySelectorAll('.emoji-item').forEach(item => {
+      item.addEventListener('click', () => {
+        messageInput.value += item.innerText;
+        messageInput.focus();
       });
     });
 
-    // Sidebar drawer toggles
-    menuBtn.addEventListener('click', () => sidebar.classList.add('open'));
-    closeSidebarBtn.addEventListener('click', () => sidebar.classList.remove('open'));
-
-    // Authentication Logic
-    function performLogin() {
-      const val = usernameInput.value.trim();
-      if (val) {
-        currentUser = val;
-        localStorage.setItem('chat_username', currentUser);
-        localStorage.setItem('chat_avatar', selectedAvatar);
-        showChat();
+    // Create Room Logic
+    createRoomBtn.addEventListener('click', () => {
+      const roomName = prompt('Введите название нового семейного чата:');
+      if (roomName && roomName.trim()) {
+        socket.emit('create-room', { name: roomName.trim() });
       }
-    }
-
-    loginSubmitBtn.addEventListener('click', performLogin);
-    usernameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') performLogin(); });
-
-    if (currentUser) {
-      showChat();
-    }
-
-    function showChat() {
-      authScreen.style.display = 'none';
-      chatScreen.style.display = 'flex';
-      socket.emit('register-user', { username: currentUser, avatar: selectedAvatar });
-    }
-
-    logoutBtn.addEventListener('click', () => {
-      localStorage.removeItem('chat_username');
-      location.reload();
     });
 
-    generalChatBtn.addEventListener('click', () => {
-      selectedTargetUser = null;
-      currentChatName.innerText = "Общий чат";
-      chatSubtitle.innerText = "Общение со всей семьей";
-      document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-      generalChatBtn.classList.add('active');
-      sidebar.classList.remove('open');
-      messagesDiv.innerHTML = '';
-      socket.emit('get-history', { room: 'general' });
-    });
-
-    // User Online List Update
-    socket.on('users-list', (users) => {
-      usersListContainer.innerHTML = '';
-      users.forEach(u => {
-        if (u.username === currentUser) return;
-
+    socket.on('rooms-list', (rooms) => {
+      roomsListContainer.innerHTML = '';
+      rooms.forEach(room => {
         const item = document.createElement('div');
-        item.className = 'chat-item';
-        if (selectedTargetUser === u.username) item.classList.add('active');
-
+        item.className = `chat-item ${currentRoom === room.id && !selectedTargetUser ? 'active' : ''}`;
+        item.dataset.room = room.id;
         item.innerHTML = `
           <div class="user-item-info">
-            <span>${u.avatar || '👤'}</span>
-            <span>${escapeHtml(u.username)}</span>
+            <span>${room.icon || '💬'}</span>
+            <span>${escapeHtml(room.name)}</span>
           </div>
-          <span class="status-dot"></span>
         `;
-
         item.addEventListener('click', () => {
-          selectedTargetUser = u.username;
-          currentChatName.innerText = u.username;
-          chatSubtitle.innerText = 'Личные сообщения';
-          sidebar.classList.remove('open');
-
-          document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-          item.classList.add('active');
-
-          messagesDiv.innerHTML = '';
-          socket.emit('get-history', { targetUser: u.username });
+          selectRoom(room.id, room.name);
         });
-
-        usersListContainer.appendChild(item);
+        roomsListContainer.appendChild(item);
       });
     });
 
-    // Send Messages & Files
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
-
-    let typingTimeout;
-    messageInput.addEventListener('input', () => {
-      socket.emit('typing', { targetUser: selectedTargetUser, room: 'general', isTyping: true });
-      clearTimeout(typingTimeout);
-      typingTimeout = setTimeout(() => {
-        socket.emit('typing', { targetUser: selectedTargetUser, room: 'general', isTyping: false });
-      }, 1500);
-    });
-
-    socket.on('typing', (data) => {
-      if (data.isTyping) {
-        typingIndicator.innerText = `${data.from} печатает...`;
-        typingIndicator.style.display = 'block';
-      } else {
-        typingIndicator.style.display = 'none';
-      }
-    });
+    function selectRoom(roomId, roomName) {
+      currentRoom = roomId;
+      selectedTargetUser = null;
+      currentChatName.innerText = roomName;
+      chatSubtitle.innerText = 'Семейный канал';
+      
+      document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
+      const activeEl = document.querySelector(`[data-room="${roomId}"]`);
+      if (activeEl) activeEl.classList.add('active');
+      
+      sidebar.classList.remove('open');
+      messagesDiv.innerHTML = '';
+      socket.emit('get-history', { room: currentRoom });
+    }
 
     async function sendMessage() {
       const text = messageInput.value.trim();
@@ -788,40 +904,29 @@
       }
 
       socket.emit('chat message', {
+        id: Date.now().toString() + Math.random().toString(36).substring(2, 5),
         user: currentUser,
         text: text,
         file: fileData,
         targetUser: selectedTargetUser,
-        room: 'general'
+        room: currentRoom,
+        reactions: {}
       });
 
       messageInput.value = '';
       fileInput.value = '';
+      emojiPicker.style.display = 'none';
     }
 
-    function readFileAsBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    }
-
-    socket.on('chat message', (msg) => {
-      if (!selectedTargetUser) appendMessage(msg);
+    socket.on('message-deleted', (data) => {
+      const msgEl = document.getElementById(`msg-${data.messageId}`);
+      if (msgEl) msgEl.remove();
     });
 
-    socket.on('private message', (msg) => {
-      if (selectedTargetUser && (msg.user === selectedTargetUser || msg.targetUser === selectedTargetUser)) {
-        appendMessage(msg);
-      }
-    });
-
-    socket.on('history-data', (data) => {
-      messagesDiv.innerHTML = '';
-      if (data.messages) {
-        data.messages.forEach(msg => appendMessage(msg));
+    socket.on('message-reacted', (data) => {
+      const msgEl = document.getElementById(`msg-${data.messageId}`);
+      if (msgEl) {
+        updateReactionsUI(msgEl, data.reactions, data.messageId);
       }
     });
 
@@ -838,6 +943,7 @@
       const isOwn = msg.user === currentUser;
       const msgEl = document.createElement('div');
       msgEl.className = `message ${isOwn ? 'own' : 'other'}`;
+      msgEl.id = `msg-${msg.id}`;
 
       const time = new Date(msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -850,177 +956,92 @@
         }
       }
 
+      const actionsHTML = `
+        <div class="message-actions">
+          <button class="action-btn react-btn" title="Добавить реакцию">❤️</button>
+          ${isOwn ? `<button class="action-btn delete-btn" title="Удалить">🗑️</button>` : ''}
+        </div>
+      `;
+
       msgEl.innerHTML = `
-        <div class="message-user">${escapeHtml(msg.user)}</div>
+        <div class="message-header-row">
+          <div class="message-user">${escapeHtml(msg.user)}</div>
+          ${actionsHTML}
+        </div>
         <div>${escapeHtml(msg.text)}</div>
         ${fileHTML}
+        <div class="reactions-bar"></div>
         <div class="message-time">${time}</div>
       `;
+
+      // Event Listeners for Reactions & Deletion
+      const reactBtn = msgEl.querySelector('.react-btn');
+      reactBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showReactionPopover(msgEl, msg.id, e.target);
+      });
+
+      if (isOwn) {
+        const deleteBtn = msgEl.querySelector('.delete-btn');
+        deleteBtn.addEventListener('click', () => {
+          socket.emit('delete-message', { messageId: msg.id, room: currentRoom, targetUser: selectedTargetUser });
+        });
+      }
+
+      updateReactionsUI(msgEl, msg.reactions || {}, msg.id);
 
       messagesDiv.appendChild(msgEl);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    function escapeHtml(t) {
-      return t ? t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : '';
-    }
-
-    /* WEBRTC LOGIC FOR AUDIO & VIDEO CALLS */
-    const callOverlay = document.getElementById('call-overlay');
-    const callStatus = document.getElementById('call-status');
-    const callUserName = document.getElementById('call-user-name');
-    const acceptCallBtn = document.getElementById('accept-call-btn');
-    const endCallBtn = document.getElementById('end-call-btn');
-    const toggleMicBtn = document.getElementById('toggle-mic-btn');
-    const toggleCamBtn = document.getElementById('toggle-cam-btn');
-
-    const localVideo = document.getElementById('local-video');
-    const remoteVideo = document.getElementById('remote-video');
-    const remoteAudio = document.getElementById('remote-audio');
-
-    let localStream, peerConnection, incomingOffer, isVideoCall = false;
-    let activeCallTargetSocketId = null;
-    let micEnabled = true, camEnabled = true;
-
-    const rtcConfig = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    };
-
-    document.getElementById('audio-call-btn').addEventListener('click', () => initiateCall(false));
-    document.getElementById('video-call-btn').addEventListener('click', () => initiateCall(true));
-
-    async function initiateCall(video) {
-      if (!selectedTargetUser) {
-        alert('Выберите собеседника из списка слева (💬), чтобы совершить вызов!');
+    function showReactionPopover(msgEl, messageId, targetBtn) {
+      let popover = msgEl.querySelector('.reaction-popover');
+      if (popover) {
+        popover.remove();
         return;
       }
 
-      isVideoCall = video;
-      callOverlay.style.display = 'flex';
-      callStatus.innerText = video ? 'Видеовызов...' : 'Аудиовызов...';
-      callUserName.innerText = selectedTargetUser;
-      acceptCallBtn.style.display = 'none';
+      popover = document.createElement('div');
+      popover.className = 'reaction-popover';
+      const emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+      
+      emojis.forEach(emoji => {
+        const span = document.createElement('span');
+        span.innerText = emoji;
+        span.addEventListener('click', () => {
+          socket.emit('react-message', { messageId, emoji, user: currentUser, room: currentRoom, targetUser: selectedTargetUser });
+          popover.remove();
+        });
+        popover.appendChild(span);
+      });
 
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: video });
-        localVideo.style.display = video ? 'block' : 'none';
-        localVideo.srcObject = localStream;
-
-        peerConnection = createPeerConnection();
-        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
-
-        socket.emit('call-user', { targetUser: selectedTargetUser, offer, isVideo: video });
-      } catch (err) {
-        alert('Не удалось получить доступ к микрофону/камере');
-        endCall();
-      }
+      msgEl.appendChild(popover);
     }
 
-    socket.on('incoming-call', (data) => {
-      incomingOffer = data.offer;
-      isVideoCall = data.isVideo;
-      activeCallTargetSocketId = data.fromSocketId;
+    function updateReactionsUI(msgEl, reactions, messageId) {
+      const reactionsBar = msgEl.querySelector('.reactions-bar');
+      if (!reactionsBar) return;
+      reactionsBar.innerHTML = '';
 
-      callOverlay.style.display = 'flex';
-      callStatus.innerText = 'Входящий вызов';
-      callUserName.innerText = data.from;
-      acceptCallBtn.style.display = 'flex';
-    });
+      // Count reactions
+      const counts = {};
+      Object.entries(reactions).forEach(([user, emoji]) => {
+        if (!counts[emoji]) counts[emoji] = { count: 0, users: [] };
+        counts[emoji].count++;
+        counts[emoji].users.push(user);
+      });
 
-    acceptCallBtn.addEventListener('click', async () => {
-      acceptCallBtn.style.display = 'none';
-      callStatus.innerText = 'Соединение...';
-
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: isVideoCall });
-        localVideo.style.display = isVideoCall ? 'block' : 'none';
-        localVideo.srcObject = localStream;
-
-        peerConnection = createPeerConnection();
-        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingOffer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-
-        socket.emit('make-answer', { targetSocketId: activeCallTargetSocketId, answer });
-      } catch (err) {
-        endCall();
-      }
-    });
-
-    socket.on('call-answered', async (data) => {
-      activeCallTargetSocketId = data.fromSocketId;
-      callStatus.innerText = 'Идет разговор';
-      if (peerConnection) {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-      }
-    });
-
-    socket.on('ice-candidate', async (data) => {
-      if (peerConnection) {
-        try {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        } catch (e) {}
-      }
-    });
-
-    socket.on('call-ended', () => endCall());
-    endCallBtn.addEventListener('click', () => {
-      if (activeCallTargetSocketId) socket.emit('end-call', { targetSocketId: activeCallTargetSocketId });
-      endCall();
-    });
-
-    toggleMicBtn.addEventListener('click', () => {
-      if (localStream) {
-        micEnabled = !micEnabled;
-        localStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
-        toggleMicBtn.style.opacity = micEnabled ? '1' : '0.4';
-      }
-    });
-
-    toggleCamBtn.addEventListener('click', () => {
-      if (localStream && isVideoCall) {
-        camEnabled = !camEnabled;
-        localStream.getVideoTracks().forEach(t => t.enabled = camEnabled);
-        toggleCamBtn.style.opacity = camEnabled ? '1' : '0.4';
-      }
-    });
-
-    function createPeerConnection() {
-      const pc = new RTCPeerConnection(rtcConfig);
-      pc.onicecandidate = (e) => {
-        if (e.candidate && activeCallTargetSocketId) {
-          socket.emit('ice-candidate', { targetSocketId: activeCallTargetSocketId, candidate: e.candidate });
-        }
-      };
-      pc.ontrack = (e) => {
-        if (isVideoCall) {
-          remoteVideo.srcObject = e.streams[0];
-        } else {
-          remoteAudio.srcObject = e.streams[0];
-        }
-      };
-      return pc;
-    }
-
-    function endCall() {
-      if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-        localStream = null;
-      }
-      if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-      }
-      callOverlay.style.display = 'none';
-      activeCallTargetSocketId = null;
+      Object.entries(counts).forEach(([emoji, data]) => {
+        const badge = document.createElement('div');
+        const hasReacted = data.users.includes(currentUser);
+        badge.className = `reaction-badge ${hasReacted ? 'active' : ''}`;
+        badge.innerHTML = `<span>${emoji}</span> <span>${data.count}</span>`;
+        badge.title = data.users.join(', ');
+        badge.addEventListener('click', () => {
+          socket.emit('react-message', { messageId, emoji, user: currentUser, room: currentRoom, targetUser: selectedTargetUser });
+        });
+        reactionsBar.appendChild(badge);
+      });
     }
   </script>
 </body>
