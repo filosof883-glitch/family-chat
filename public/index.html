@@ -894,6 +894,160 @@
       box-shadow: 0 15px 35px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3);
       animation: popIn 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(10, 12, 22, 0.75);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      z-index: 800;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      animation: fadeIn 0.25s ease;
+    }
+
+    .modal-card {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 32px;
+      padding: 28px 22px;
+      width: 100%;
+      max-width: 440px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      position: relative;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #ffffff 0%, #d8b4fe 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
+    .form-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(255, 255, 255, 0.7);
+      margin-bottom: 6px;
+      display: block;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    select.form-input, input[type="date"].form-input, textarea.form-input {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(0, 0, 0, 0.3);
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.25s ease;
+      color-scheme: dark;
+    }
+
+    textarea.form-input {
+      resize: vertical;
+      min-height: 70px;
+    }
+
+    .photo-upload-preview {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid rgba(192, 132, 252, 0.8);
+      box-shadow: 0 0 15px rgba(168, 85, 247, 0.4);
+      margin-bottom: 10px;
+    }
+
+    .photo-upload-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .user-avatar-img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .profile-card-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .profile-card-avatar {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      object-fit: cover;
+      font-size: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.1);
+      border: 2px solid rgba(192, 132, 252, 0.6);
+      box-shadow: 0 0 25px rgba(168, 85, 247, 0.4);
+    }
+
+    .role-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: rgba(168, 85, 247, 0.25);
+      border: 1px solid rgba(168, 85, 247, 0.5);
+      color: #e9d5ff;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .profile-detail-item {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      font-size: 14px;
+    }
+
+    .profile-detail-label {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.5);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
@@ -968,7 +1122,8 @@
         <div class="sidebar-section">Участники онлайн:</div>
         <div id="users-list"></div>
 
-        <button class="btn" id="logout-btn" style="margin-top: auto; background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">Выйти</button>
+        <button class="btn" id="open-my-profile-btn" style="margin-top: auto; margin-bottom: 10px; background: rgba(168, 85, 247, 0.3); border-color: rgba(168, 85, 247, 0.5);">👤 Мой профиль</button>
+        <button class="btn" id="logout-btn" style="background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">Выйти</button>
       </div>
 
       <!-- MESSAGES AREA -->
@@ -1030,13 +1185,86 @@
         <button class="call-action-btn" id="end-call-btn" title="Завершить">✖</button>
       </div>
     </div>
+
+    <!-- EDIT PROFILE MODAL -->
+    <div id="profile-modal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title">Мой профиль</h3>
+          <button class="icon-btn" id="close-profile-modal">✖</button>
+        </div>
+
+        <div class="photo-upload-container">
+          <div id="profile-photo-preview" class="profile-card-avatar">👤</div>
+          <label for="profile-photo-input" class="btn" style="padding: 6px 14px; font-size: 12px; width: auto; background: rgba(255,255,255,0.15);">📷 Загрузить фото</label>
+          <input type="file" id="profile-photo-input" accept="image/*" style="display: none;">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Роль в семье</label>
+          <select id="profile-role-input" class="form-input">
+            <option value="Мама">👩 Мама</option>
+            <option value="Папа">👨 Папа</option>
+            <option value="Дочка">👧 Дочка</option>
+            <option value="Сын">👦 Сын</option>
+            <option value="Бабушка">👵 Бабушка</option>
+            <option value="Дедушка">👴 Дедушка</option>
+            <option value="Родственник">👤 Родственник</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Дата рождения</label>
+          <input type="date" id="profile-dob-input" class="form-input">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">О себе / Статус</label>
+          <textarea id="profile-bio-input" class="form-input" placeholder="Расскажите о себе или напишите статус..."></textarea>
+        </div>
+
+        <button class="btn" id="save-profile-btn" style="margin-top: 10px;">Сохранить изменения</button>
+      </div>
+    </div>
+
+    <!-- VIEW PROFILE MODAL -->
+    <div id="view-profile-modal" class="modal-overlay">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title">Профиль участника</h3>
+          <button class="icon-btn" id="close-view-profile-modal">✖</button>
+        </div>
+
+        <div class="profile-card-header">
+          <div id="view-user-avatar" class="profile-card-avatar">👤</div>
+          <h2 id="view-user-name" style="font-size: 22px; font-weight: 700;">—</h2>
+          <span id="view-user-role" class="role-badge">Член семьи</span>
+        </div>
+
+        <div class="profile-detail-item">
+          <div class="profile-detail-label">🎂 Дата рождения</div>
+          <div id="view-user-dob">—</div>
+        </div>
+
+        <div class="profile-detail-item">
+          <div class="profile-detail-label">📝 О себе</div>
+          <div id="view-user-bio" style="line-height: 1.4;">—</div>
+        </div>
+
+        <button class="btn" id="view-user-call-btn" style="margin-top: 15px;">📞 Позвонить</button>
+      </div>
+    </div>
   </div>
 
   <script>
     let currentUser = localStorage.getItem('chat_username') || '';
     let familyCode = localStorage.getItem('chat_family_code') || 'family-123';
     let selectedAvatar = localStorage.getItem('chat_avatar') || '👨‍👩‍👧‍👦';
-    
+    let userPhoto = localStorage.getItem('chat_user_photo') || '';
+    let userRole = localStorage.getItem('chat_user_role') || 'Родственник';
+    let userDob = localStorage.getItem('chat_user_dob') || '';
+    let userBio = localStorage.getItem('chat_user_bio') || '';
+
     let currentRoom = 'general';
     let selectedTargetUser = null; // null = room chat, otherwise username
     let myPeer = null;
@@ -1044,102 +1272,29 @@
     let activeCall = null; // PeerJS MediaConnection
     let localMediaStream = null;
     
-    let onlineUsers = {}; // name -> { name, avatar, peerId, lastSeen }
+    let onlineUsers = {}; // name -> { name, avatar, photo, role, dob, bio, peerId, lastSeen }
     let roomsList = [{ id: 'general', name: 'Общий чат', icon: '💬' }];
     let messagesHistory = []; // local stored messages
 
-    let callTimerInterval = null;
-    let callSeconds = 0;
-    let isAudioMuted = false;
-    let isVideoMuted = false;
-    let audioContext = null;
-    let ringtoneOscillator = null;
+    // UI Elements for Profile
+    const profileModal = document.getElementById('profile-modal');
+    const openMyProfileBtn = document.getElementById('open-my-profile-btn');
+    const closeProfileModal = document.getElementById('close-profile-modal');
+    const saveProfileBtn = document.getElementById('save-profile-btn');
+    const profilePhotoInput = document.getElementById('profile-photo-input');
+    const profilePhotoPreview = document.getElementById('profile-photo-preview');
+    const profileRoleInput = document.getElementById('profile-role-input');
+    const profileDobInput = document.getElementById('profile-dob-input');
+    const profileBioInput = document.getElementById('profile-bio-input');
 
-    // Load stored messages
-    try {
-      const storedMsgs = localStorage.getItem(`chat_msgs_${familyCode}`);
-      if (storedMsgs) messagesHistory = JSON.parse(storedMsgs);
-    } catch(e) {}
-
-    // BroadcastChannel for instant local browser-tab communication
-    const broadcastChan = new BroadcastChannel(`family_chat_${familyCode}`);
-
-    const authScreen = document.getElementById('auth-screen');
-    const chatScreen = document.getElementById('chat-screen');
-    const familyIdInput = document.getElementById('family-id-input');
-    const usernameInput = document.getElementById('username-input');
-    const loginSubmitBtn = document.getElementById('login-submit-btn');
-    const authForm = document.getElementById('auth-form');
-    const avatarOptions = document.querySelectorAll('.avatar-option');
-    
-    const messagesDiv = document.getElementById('messages');
-    const messageInput = document.getElementById('message-input');
-    const fileInput = document.getElementById('file-input');
-    const sendBtn = document.getElementById('send-btn');
-    const typingIndicator = document.getElementById('typing-indicator');
-
-    const emojiBtn = document.getElementById('emoji-btn');
-    const emojiPicker = document.getElementById('emoji-picker');
-    const createRoomBtn = document.getElementById('create-room-btn');
-    const roomsListContainer = document.getElementById('rooms-list');
-
-    const sidebar = document.getElementById('sidebar');
-    const menuBtn = document.getElementById('menu-btn');
-    const closeSidebarBtn = document.getElementById('close-sidebar-btn');
-    const usersListContainer = document.getElementById('users-list');
-    const currentChatName = document.getElementById('current-chat-name');
-    const chatSubtitle = document.getElementById('chat-subtitle');
-    const logoutBtn = document.getElementById('logout-btn');
-
-    // Call Overlay Elements
-    const callOverlay = document.getElementById('call-overlay');
-    const callStatus = document.getElementById('call-status');
-    const callUserName = document.getElementById('call-user-name');
-    const callTimer = document.getElementById('call-timer');
-    const audioAvatar = document.getElementById('audio-avatar');
-    const callAvatarIcon = document.getElementById('call-avatar-icon');
-    const remoteVideo = document.getElementById('remote-video');
-    const localVideo = document.getElementById('local-video');
-    
-    const audioCallBtn = document.getElementById('audio-call-btn');
-    const videoCallBtn = document.getElementById('video-call-btn');
-    const acceptCallBtn = document.getElementById('accept-call-btn');
-    const endCallBtn = document.getElementById('end-call-btn');
-    const toggleMicBtn = document.getElementById('toggle-mic-btn');
-    const toggleCamBtn = document.getElementById('toggle-cam-btn');
-    const toast = document.getElementById('toast');
-
-    function showToast(msg) {
-      toast.innerText = msg;
-      toast.style.display = 'block';
-      setTimeout(() => { toast.style.display = 'none'; }, 3200);
-    }
-
-    // Web Audio API Ringtone Generator
-    function startRingtone() {
-      try {
-        if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        if (ringtoneOscillator) return;
-
-        ringtoneOscillator = audioContext.createOscillator();
-        const gainNode = audioContext.createGain();
-        ringtoneOscillator.type = 'sine';
-        ringtoneOscillator.frequency.setValueAtTime(440, audioContext.currentTime); // A4 tone
-        gainNode.gain.setValueAtTime(0.08, audioContext.currentTime);
-        
-        ringtoneOscillator.connect(gainNode);
-        gainNode.connect(audioContext.destination);
-        ringtoneOscillator.start();
-      } catch(e){}
-    }
-
-    function stopRingtone() {
-      if (ringtoneOscillator) {
-        try { ringtoneOscillator.stop(); } catch(e){}
-        ringtoneOscillator = null;
-      }
-    }
-
+    const viewProfileModal = document.getElementById('view-profile-modal');
+    const closeViewProfileModal = document.getElementById('close-view-profile-modal');
+    const viewUserAvatar = document.getElementById('view-user-avatar');
+    const viewUserName = document.getElementById('view-user-name');
+    const viewUserRole = document.getElementById('view-user-role');
+    const viewUserDob = document.getElementById('view-user-dob');
+    const viewUserBio = document.getElementById('view-user-bio');
+    const viewUserCallBtn = document.getElementById('view-user-call-btn');
     avatarOptions.forEach(option => {
       option.addEventListener('click', () => {
         avatarOptions.forEach(opt => opt.classList.remove('selected'));
@@ -1235,6 +1390,10 @@
         type: 'presence',
         user: currentUser,
         avatar: selectedAvatar,
+        photo: userPhoto,
+        role: userRole,
+        dob: userDob,
+        bio: userBio,
         peerId: getPeerId(currentUser, familyCode),
         timestamp: Date.now()
       };
@@ -1273,6 +1432,10 @@
           type: 'presence',
           user: currentUser,
           avatar: selectedAvatar,
+          photo: userPhoto,
+          role: userRole,
+          dob: userDob,
+          bio: userBio,
           peerId: myPeer.id,
           timestamp: Date.now()
         });
@@ -1295,6 +1458,10 @@
           onlineUsers[data.user] = {
             name: data.user,
             avatar: data.avatar || '👤',
+            photo: data.photo || '',
+            role: data.role || 'Член семьи',
+            dob: data.dob || '',
+            bio: data.bio || '',
             peerId: data.peerId,
             lastSeen: Date.now()
           };
@@ -1360,19 +1527,119 @@
       users.forEach(u => {
         const item = document.createElement('div');
         item.className = `chat-item ${selectedTargetUser === u.name ? 'active' : ''}`;
+        
+        let avatarHTML = `<span>${u.avatar || '👤'}</span>`;
+        if (u.photo) {
+          avatarHTML = `<img src="${u.photo}" class="user-avatar-img" alt="avatar">`;
+        }
+
         item.innerHTML = `
           <div class="user-item-info">
-            <span>${u.avatar}</span>
-            <span>${escapeHtml(u.name)}</span>
+            ${avatarHTML}
+            <div style="display: flex; flex-direction: column;">
+              <span>${escapeHtml(u.name)}</span>
+              <span style="font-size: 10px; opacity: 0.6;">${escapeHtml(u.role || 'Член семьи')}</span>
+            </div>
           </div>
-          <div class="status-dot"></div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button class="action-btn view-p-btn" title="Профиль">ℹ️</button>
+            <div class="status-dot"></div>
+          </div>
         `;
+
+        item.querySelector('.view-p-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          openUserProfileModal(u.name);
+        });
+
         item.addEventListener('click', () => {
           selectUserChat(u.name, u.avatar);
         });
         usersListContainer.appendChild(item);
       });
     }
+
+    function updateProfilePreview() {
+      if (userPhoto) {
+        profilePhotoPreview.innerHTML = `<img src="${userPhoto}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+      } else {
+        profilePhotoPreview.innerHTML = selectedAvatar || '👤';
+      }
+    }
+
+    openMyProfileBtn.addEventListener('click', () => {
+      profileRoleInput.value = userRole;
+      profileDobInput.value = userDob;
+      profileBioInput.value = userBio;
+      updateProfilePreview();
+      profileModal.style.display = 'flex';
+    });
+
+    closeProfileModal.addEventListener('click', () => {
+      profileModal.style.display = 'none';
+    });
+
+    profilePhotoInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        userPhoto = await readFileAsBase64(file);
+        localStorage.setItem('chat_user_photo', userPhoto);
+        updateProfilePreview();
+      }
+    });
+
+    saveProfileBtn.addEventListener('click', () => {
+      userRole = profileRoleInput.value;
+      userDob = profileDobInput.value;
+      userBio = profileBioInput.value.trim();
+
+      localStorage.setItem('chat_user_role', userRole);
+      localStorage.setItem('chat_user_dob', userDob);
+      localStorage.setItem('chat_user_bio', userBio);
+
+      profileModal.style.display = 'none';
+      showToast('Профиль успешно обновлен!');
+      broadcastPresence();
+    });
+
+    function openUserProfileModal(username) {
+      const u = onlineUsers[username];
+      if (!u) {
+        showToast('Пользователь не найден');
+        return;
+      }
+
+      viewUserName.innerText = u.name;
+      viewUserRole.innerText = u.role || 'Член семьи';
+      viewUserBio.innerText = u.bio ? u.bio : 'Информация не указана';
+
+      if (u.photo) {
+        viewUserAvatar.innerHTML = `<img src="${u.photo}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+      } else {
+        viewUserAvatar.innerHTML = u.avatar || '👤';
+      }
+
+      if (u.dob) {
+        const dobDate = new Date(u.dob);
+        const age = Math.floor((new Date() - dobDate) / (365.25 * 24 * 60 * 60 * 1000));
+        const formattedDate = dobDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+        viewUserDob.innerText = `${formattedDate} (${age} лет)`;
+      } else {
+        viewUserDob.innerText = 'Не указана';
+      }
+
+      viewUserCallBtn.onclick = () => {
+        viewProfileModal.style.display = 'none';
+        selectUserChat(u.name, u.avatar);
+        startCall('video');
+      };
+
+      viewProfileModal.style.display = 'flex';
+    }
+
+    closeViewProfileModal.addEventListener('click', () => {
+      viewProfileModal.style.display = 'none';
+    });
 
     menuBtn.addEventListener('click', () => { sidebar.classList.add('open'); });
     closeSidebarBtn.addEventListener('click', () => { sidebar.classList.remove('open'); });
