@@ -49,23 +49,25 @@
       overflow: hidden;
       z-index: 0;
       pointer-events: none;
+      isolation: isolate;
+      transform: translateZ(0);
     }
 
     .liquid-blob {
       position: absolute;
       border-radius: 50%;
-      filter: blur(80px);
-      opacity: 0.6;
-      animation: floatBlob 18s infinite alternate ease-in-out;
+      filter: blur(40px);
+      opacity: 0.5;
+      animation: floatBlob 22s infinite alternate ease-in-out;
       will-change: transform;
-      transform: translateZ(0);
+      transform: translate3d(0, 0, 0);
       backface-visibility: hidden;
     }
 
     .blob-1 {
       width: 340px;
       height: 340px;
-      background: radial-gradient(circle, rgba(168, 85, 247, 0.85) 0%, rgba(99, 102, 241, 0.4) 100%);
+      background: radial-gradient(circle, rgba(168, 85, 247, 0.7) 0%, rgba(99, 102, 241, 0.2) 100%);
       top: -10%;
       left: -10%;
     }
@@ -73,7 +75,7 @@
     .blob-2 {
       width: 400px;
       height: 400px;
-      background: radial-gradient(circle, rgba(236, 72, 153, 0.75) 0%, rgba(139, 92, 246, 0.35) 100%);
+      background: radial-gradient(circle, rgba(236, 72, 153, 0.6) 0%, rgba(139, 92, 246, 0.2) 100%);
       bottom: -15%;
       right: -10%;
       animation-delay: -6s;
@@ -82,16 +84,16 @@
     .blob-3 {
       width: 300px;
       height: 300px;
-      background: radial-gradient(circle, rgba(56, 189, 248, 0.65) 0%, rgba(59, 130, 246, 0.35) 100%);
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.5) 0%, rgba(59, 130, 246, 0.2) 100%);
       top: 40%;
       left: 30%;
       animation-delay: -12s;
     }
 
     @keyframes floatBlob {
-      0% { transform: translate(0px, 0px) scale(1) rotate(0deg); }
-      50% { transform: translate(60px, -40px) scale(1.15) rotate(180deg); }
-      100% { transform: translate(-40px, 50px) scale(0.95) rotate(360deg); }
+      0% { transform: translate3d(0px, 0px, 0) scale(1) rotate(0deg); }
+      50% { transform: translate3d(50px, -30px, 0) scale(1.1) rotate(180deg); }
+      100% { transform: translate3d(-30px, 40px, 0) scale(0.95) rotate(360deg); }
     }
 
     /* App Container Glass Wrapper */
@@ -104,12 +106,13 @@
       flex-direction: column;
       position: relative;
       z-index: 1;
-      background: rgba(18, 22, 38, 0.65);
-      backdrop-filter: blur(30px) saturate(180%);
-      -webkit-backdrop-filter: blur(30px) saturate(180%);
+      background: rgba(18, 22, 38, 0.75);
+      backdrop-filter: blur(20px) saturate(160%);
+      -webkit-backdrop-filter: blur(20px) saturate(160%);
       box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.2);
-      transform: translateZ(0);
+      transform: translate3d(0, 0, 0);
       will-change: transform;
+      contain: layout style paint;
     }
 
     @media (min-width: 540px) {
@@ -263,14 +266,15 @@
       border-radius: 24px;
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.18);
-      backdrop-filter: blur(30px) saturate(200%);
-      -webkit-backdrop-filter: blur(30px) saturate(200%);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
       display: flex;
       justify-content: space-between;
       align-items: center;
       z-index: 50;
       flex-shrink: 0;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      transform: translateZ(0);
     }
 
     .header-info {
@@ -492,10 +496,12 @@
       word-wrap: break-word;
       position: relative;
       line-height: 1.45;
-      animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: fadeIn 0.2s ease-out;
       box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
       user-select: text;
       will-change: transform, opacity;
+      transform: translateZ(0);
+      backface-visibility: hidden;
     }
 
     .message.active-popover {
@@ -716,11 +722,20 @@
     }
 
     #typing-indicator {
-      display: none;
-      padding: 0 20px 8px 20px;
+      height: 20px;
+      line-height: 20px;
+      opacity: 0;
+      padding: 0 20px;
       font-size: 12px;
       color: rgba(255, 255, 255, 0.6);
       font-style: italic;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
+      flex-shrink: 0;
+    }
+
+    #typing-indicator.visible {
+      opacity: 1;
     }
 
     #input-area {
@@ -1627,9 +1642,11 @@
       } else if (data.type === 'typing') {
         if (data.user !== currentUser) {
           typingIndicator.innerText = `${data.user} печатает...`;
-          typingIndicator.style.display = 'block';
+          typingIndicator.classList.add('visible');
           clearTimeout(window.typingTimeout);
-          window.typingTimeout = setTimeout(() => { typingIndicator.style.display = 'none'; }, 2000);
+          window.typingTimeout = setTimeout(() => { 
+            typingIndicator.classList.remove('visible'); 
+          }, 2000);
         }
       } else if (data.type === 'end-call') {
         endCall(false);
@@ -1652,16 +1669,15 @@
       const users = Object.values(onlineUsers);
       const currentHash = JSON.stringify(users.map(u => ({ name: u.name, avatar: u.avatar, photo: u.photo, role: u.role }))) + `_selected_${selectedTargetUser}`;
       
-      // Избегаем повторного пересоздания DOM, если список участников и их состояния не изменились
       if (currentHash === lastRenderedUsersHash) return;
       lastRenderedUsersHash = currentHash;
 
-      usersListContainer.innerHTML = '';
-      
       if (users.length === 0) {
         usersListContainer.innerHTML = `<div style="font-size: 12px; color: rgba(255,255,255,0.4); padding: 6px;">Пока нет других участников</div>`;
         return;
       }
+
+      const fragment = document.createDocumentFragment();
 
       users.forEach(u => {
         const item = document.createElement('div');
@@ -1669,7 +1685,7 @@
         
         let avatarHTML = `<span>${u.avatar || '👤'}</span>`;
         if (u.photo) {
-          avatarHTML = `<img src="${u.photo}" class="user-avatar-img" alt="avatar">`;
+          avatarHTML = `<img src="${u.photo}" class="user-avatar-img" alt="avatar" loading="eager">`;
         }
 
         item.innerHTML = `
@@ -1694,8 +1710,11 @@
         item.addEventListener('click', () => {
           selectUserChat(u.name, u.avatar);
         });
-        usersListContainer.appendChild(item);
+        fragment.appendChild(item);
       });
+
+      usersListContainer.innerHTML = '';
+      usersListContainer.appendChild(fragment);
     }
 
     function updateProfilePreview() {
