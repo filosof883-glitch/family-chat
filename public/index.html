@@ -57,6 +57,9 @@
       filter: blur(80px);
       opacity: 0.6;
       animation: floatBlob 18s infinite alternate ease-in-out;
+      will-change: transform;
+      transform: translateZ(0);
+      backface-visibility: hidden;
     }
 
     .blob-1 {
@@ -101,10 +104,12 @@
       flex-direction: column;
       position: relative;
       z-index: 1;
-      background: rgba(18, 22, 38, 0.45);
-      backdrop-filter: blur(40px) saturate(210%);
-      -webkit-backdrop-filter: blur(40px) saturate(210%);
+      background: rgba(18, 22, 38, 0.65);
+      backdrop-filter: blur(30px) saturate(180%);
+      -webkit-backdrop-filter: blur(30px) saturate(180%);
       box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+      transform: translateZ(0);
+      will-change: transform;
     }
 
     @media (min-width: 540px) {
@@ -488,8 +493,9 @@
       position: relative;
       line-height: 1.45;
       animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
       user-select: text;
+      will-change: transform, opacity;
     }
 
     .message.active-popover {
@@ -503,24 +509,20 @@
 
     .message.own {
       align-self: flex-end;
-      background: linear-gradient(135deg, rgba(147, 51, 234, 0.85) 0%, rgba(79, 70, 229, 0.85) 100%);
-      border: 1px solid rgba(255, 255, 255, 0.3);
+      background: linear-gradient(135deg, rgba(147, 51, 234, 0.9) 0%, rgba(79, 70, 229, 0.9) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.35);
       color: #ffffff;
       border-bottom-right-radius: 6px;
-      backdrop-filter: blur(15px);
-      -webkit-backdrop-filter: blur(15px);
       box-shadow: 0 8px 25px rgba(126, 34, 206, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4);
     }
 
     .message.other {
       align-self: flex-start;
-      background: rgba(255, 255, 255, 0.1);
+      background: rgba(30, 38, 64, 0.85);
       border: 1px solid rgba(255, 255, 255, 0.18);
       color: #f8fafc;
       border-bottom-left-radius: 6px;
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.25);
     }
 
     .message-user {
@@ -1365,6 +1367,7 @@
     let callSeconds = 0;
 
     let onlineUsers = {}; 
+    let lastRenderedUsersHash = '';
     let roomsList = JSON.parse(localStorage.getItem('chat_rooms_list')) || [{ id: 'general', name: 'Общий чат', icon: '💬' }];
     let messagesHistory = JSON.parse(localStorage.getItem(`chat_msgs_${familyCode}`)) || []; 
 
@@ -1646,8 +1649,14 @@
     }
 
     function renderUsersList() {
-      usersListContainer.innerHTML = '';
       const users = Object.values(onlineUsers);
+      const currentHash = JSON.stringify(users.map(u => ({ name: u.name, avatar: u.avatar, photo: u.photo, role: u.role }))) + `_selected_${selectedTargetUser}`;
+      
+      // Избегаем повторного пересоздания DOM, если список участников и их состояния не изменились
+      if (currentHash === lastRenderedUsersHash) return;
+      lastRenderedUsersHash = currentHash;
+
+      usersListContainer.innerHTML = '';
       
       if (users.length === 0) {
         usersListContainer.innerHTML = `<div style="font-size: 12px; color: rgba(255,255,255,0.4); padding: 6px;">Пока нет других участников</div>`;
