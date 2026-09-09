@@ -197,7 +197,7 @@ io.on('connection', (socket) => {
           isVideo: !!data.isVideo
         });
       } else {
-        socket.emit('call-failed', { reason: 'Пользователь не найдем или оффлайн' });
+        socket.emit('call-failed', { reason: 'Пользователь не найден или оффлайн' });
       }
     } catch (err) {
       console.error('[ERROR] call-user:', err);
@@ -272,7 +272,7 @@ io.on('connection', (socket) => {
         io.to('general').emit('chat message', sysMsg);
 
         users.delete(socket.id);
-        broadcastOnlineList();
+        broadcastUsersList(); // Исправлен вызов: теперь вызывается существующая функция broadcastUsersList
       }
     } catch (err) {
       console.error('[ERROR] disconnect:', err);
