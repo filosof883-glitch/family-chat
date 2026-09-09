@@ -383,16 +383,22 @@
 
     .action-btn {
       background: rgba(255, 255, 255, 0.15);
-      border: none;
-      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
       padding: 2px 6px;
-      font-size: 11px;
+      font-size: 12px;
       cursor: pointer;
       color: #fff;
+      transition: background 0.2s, transform 0.1s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
     }
 
     .action-btn:hover {
       background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.08);
     }
 
     .reactions-bar {
@@ -419,19 +425,36 @@
       background: rgba(168, 85, 247, 0.35);
     }
 
+    /* REACTION POPOVER WITH DYNAMIC POSITIONING */
     .reaction-popover {
       position: absolute;
-      bottom: 100%;
-      right: 0;
       background: rgba(15, 23, 42, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.2);
-      backdrop-filter: blur(10px);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-radius: 20px;
-      padding: 4px 8px;
+      padding: 6px 10px;
       display: flex;
-      gap: 6px;
+      gap: 8px;
       box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-      z-index: 40;
+      z-index: 100;
+      white-space: nowrap;
+      animation: popIn 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes popIn {
+      from { opacity: 0; transform: scale(0.8); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .reaction-popover.popover-top {
+      bottom: calc(100% + 6px);
+      right: 0;
+    }
+
+    .reaction-popover.popover-bottom {
+      top: calc(100% + 6px);
+      right: 0;
     }
 
     .reaction-popover span {
@@ -1371,8 +1394,23 @@
       let popover = msgEl.querySelector('.reaction-popover');
       if (popover) { popover.remove(); return; }
 
+      // Закрываем другие открытые панели реакций
+      document.querySelectorAll('.reaction-popover').forEach(p => p.remove());
+
       popover = document.createElement('div');
       popover.className = 'reaction-popover';
+
+      // Проверяем расстояние сообщения от верхней границы контейнера
+      const msgRect = msgEl.getBoundingClientRect();
+      const messagesRect = messagesDiv.getBoundingClientRect();
+
+      // Если сообщение ближе 50px к верхнему краю чата — открываем вниз
+      if (msgRect.top - messagesRect.top < 50) {
+        popover.classList.add('popover-bottom');
+      } else {
+        popover.classList.add('popover-top');
+      }
+
       ['👍', '❤️', '😂', '😮', '😢', '🎉'].forEach(emoji => {
         const span = document.createElement('span');
         span.innerText = emoji;
@@ -1424,6 +1462,9 @@
     document.addEventListener('click', (e) => {
       if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
         emojiPicker.style.display = 'none';
+      }
+      if (!e.target.closest('.reaction-popover') && !e.target.closest('.react-btn')) {
+        document.querySelectorAll('.reaction-popover').forEach(p => p.remove());
       }
     });
 
