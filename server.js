@@ -12,62 +12,64 @@ const io = new Server(server, {
   }
 });
 
+// Отдача статики из папки public
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Хранилище онлайн-пользователей: socketId -> { username, socketId }
-const usersMap = new Map();
+// Карта пользователей: socketId -> { username, socketId }
+const activeUsers = new Map();
 
-// Функция отправки обновленного списка всех пользователей всем клиентам
-function broadcastUsersList() {
-  const onlineList = Array.from(usersMap.values());
-  io.emit('users-list', onlineList);
+// Функция рассылки актуального списка пользователей
+function broadcastOnlineList() {
+  const usersArray = Array.from(activeUsers.values());
+  io.emit('users-list', usersArray);
 }
 
 io.on('connection', (socket) => {
-  console.log(`Подключился сокет: ${socket.id}`);
+  console.log(`[Socket] Новое подключение: ${socket.id}`);
 
-  // 1. Регистрация пользователя в сети
+  // Регистрация имени пользователя
   socket.on('register-user', (username) => {
     try {
       if (!username) return;
       socket.username = username;
-      usersMap.set(socket.id, { username, socketId: socket.id, online: true });
-      console.log(`Пользователь ${username} вошел в чат`);
-      broadcastUsersList();
+      activeUsers.set(socket.id, { username, socketId: socket.id });
+      console.log(`[Auth] Зарегистрирован: ${username} (${socket.id})`);
+      broadcastOnlineList();
     } catch (err) {
-      console.error('Ошибка register-user:', err);
+      console.error('Ошибка при register-user:', err);
     }
   });
 
-  // 2. Печать сообщения
+  // Обработка статус-индикатора "печатает..."
   socket.on('typing', (data) => {
     try {
       socket.broadcast.emit('typing', data);
     } catch (err) {
-      console.error('Ошибка typing:', err);
+      console.error('Ошибка при typing:', err);
     }
   });
 
-  // 3. Отправка сообщений
+  // Обработка текстовых сообщений
   socket.on('chat message', (data) => {
     try {
-      const msgData = {
-        ...data,
+      const payload = {
         id: Date.now().toString(),
+        user: data.user || socket.username || 'Аноним',
+        text: data.text || '',
         timestamp: new Date().toISOString()
       };
-      io.emit('chat message', msgData);
+      io.emit('chat message', payload);
     } catch (err) {
-      console.error('Ошибка chat message:', err);
+      console.error('Ошибка при chat message:', err);
     }
   });
 
-  // 4. WebRTC Звонки
+  // --- WEBRTC ЗВОНКИ ---
   socket.on('call-user', (data) => {
     try {
       if (!data || !data.targetUser) return;
-      const targetEntry = Array.from(usersMap.entries()).find(([_, u]) => u.username === data.targetUser);
-
+      
+      const targetEntry = Array.from(activeUsers.entries()).find(([_, u]) => u.username === data.targetUser);
       if (targetEntry) {
         io.to(targetEntry[0]).emit('incoming-call', {
           from: socket.username || 'Неизвестный',
@@ -79,7 +81,7 @@ io.on('connection', (socket) => {
         socket.emit('call-failed', { reason: 'Пользователь не в сети' });
       }
     } catch (err) {
-      console.error('Ошибка call-user:', err);
+      console.error('Ошибка при call-user:', err);
     }
   });
 
@@ -92,7 +94,7 @@ io.on('connection', (socket) => {
         });
       }
     } catch (err) {
-      console.error('Ошибка make-answer:', err);
+      console.error('Ошибка при make-answer:', err);
     }
   });
 
@@ -105,7 +107,7 @@ io.on('connection', (socket) => {
         });
       }
     } catch (err) {
-      console.error('Ошибка ice-candidate:', err);
+      console.error('Ошибка при ice-candidate:', err);
     }
   });
 
@@ -115,31 +117,32 @@ io.on('connection', (socket) => {
         io.to(data.targetSocketId).emit('call-ended');
       }
     } catch (err) {
-      console.error('Ошибка end-call:', err);
+      console.error('Ошибка при end-call:', err);
     }
   });
 
-  // 5. Отключение
+  // Отключение клиента
   socket.on('disconnect', () => {
     try {
-      usersMap.delete(socket.id);
-      broadcastUsersList();
-      console.log(`Отключился сокет: ${socket.id}`);
+      activeUsers.delete(socket.id);
+      broadcastOnlineList();
+      console.log(`[Socket] Отключен: ${socket.id}`);
     } catch (err) {
-      console.error('Ошибка disconnect:', err);
+      console.error('Ошибка при disconnect:', err);
     }
   });
 });
 
+// Предотвращение падения Node.js процесса (защита от 502 Bad Gateway)
 process.on('uncaughtException', (err) => {
-  console.error('КРИТИЧЕСКАЯ ОШИБКА:', err);
+  console.error('КРИТИЧЕСКИЙ СБОЙ (uncaughtException):', err);
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('НЕОБРАБОТАННЫЙ PROMISE:', promise, 'причина:', reason);
+  console.error('КРИТИЧЕСКИЙ СБОЙ (unhandledRejection):', promise, 'причина:', reason);
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Сервер работает на порту ${PORT}`);
+  console.log(`Сервер успешно запущен на порту ${PORT}`);
 });
