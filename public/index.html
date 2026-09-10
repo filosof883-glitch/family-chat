@@ -94,7 +94,6 @@
       100% { transform: translate3d(-25px, 35px, 0) scale(0.95) rotate(360deg); }
     }
 
-    /* ОПТИМИЗАЦИЯ ДЛЯ МОБИЛЬНЫХ УСТРОЙСТВ И ЭНЕРГОСБЕРЕЖЕНИЯ */
     @media (max-width: 768px), (prefers-reduced-motion: reduce) {
       .liquid-blob {
         animation: none !important;
@@ -1456,7 +1455,6 @@
     let roomsList = JSON.parse(localStorage.getItem('chat_rooms_list')) || [{ id: 'general', name: 'Общий чат', icon: '💬' }];
     let messagesHistory = JSON.parse(localStorage.getItem(`chat_msgs_${familyCode}`)) || []; 
 
-    // Cross-tab & Multi-client synchronization
     const broadcastChan = new BroadcastChannel(`family_chat_${familyCode}`);
 
     window.addEventListener('storage', (e) => {
@@ -1535,7 +1533,6 @@
       });
     });
 
-    // FIX: Encodes username safely to prevent PeerJS ID rejection with Cyrillic names
     function getPeerId(name, famCode) {
       const cleanFam = famCode.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
       const cleanUser = btoa(encodeURIComponent(name)).replace(/[^a-zA-Z0-9]/g, '_');
@@ -2197,7 +2194,6 @@
           if (callType === 'video') localVideo.srcObject = localMediaStream;
 
           call.answer(localMediaStream);
-          // FIX: Added stream handler for the call receiver (callee)
           handleCallStream(call, callType);
 
         } catch (err) {
