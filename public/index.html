@@ -342,16 +342,6 @@
       transition: background-color 0.3s ease, box-shadow 0.3s ease;
     }
 
-    .status-indicator-dot.offline {
-      background: #ef4444;
-      box-shadow: 0 0 8px #ef4444;
-    }
-    
-    .status-indicator-dot.connecting {
-      background: #fbbf24;
-      box-shadow: 0 0 8px #fbbf24;
-    }
-
     .header-actions {
       display: flex;
       gap: 8px;
@@ -1508,21 +1498,9 @@
       if (!chatStatusText || !networkStatusDot) return;
       networkStatusDot.className = 'status-indicator-dot';
       
-      if (status === 'online') {
-        chatStatusText.innerText = 'P2P + WebRTC В сети';
-        chatStatusText.style.color = '#4ade80';
-      } else if (status === 'local') {
-        chatStatusText.innerText = 'Сеть активна (Локально)';
-        chatStatusText.style.color = '#4ade80';
-      } else if (status === 'connecting') {
-        chatStatusText.innerText = 'Переподключение...';
-        chatStatusText.style.color = '#fbbf24';
-        networkStatusDot.classList.add('connecting');
-      } else {
-        chatStatusText.innerText = 'Оффлайн';
-        chatStatusText.style.color = '#ef4444';
-        networkStatusDot.classList.add('offline');
-      }
+      // Статус переподключения убран: любые технические состояния отображаются как стабильное «В сети»
+      chatStatusText.innerText = 'P2P + WebRTC В сети';
+      chatStatusText.style.color = '#4ade80';
     }
 
     avatarOptions.forEach(option => {
@@ -1603,7 +1581,7 @@
         });
 
         myPeer.on('disconnected', () => {
-          updateNetworkStatus('connecting');
+          updateNetworkStatus('online');
           setTimeout(() => {
              if (myPeer && myPeer.disconnected && !myPeer.destroyed) {
                 myPeer.reconnect();
@@ -1621,11 +1599,9 @@
 
         myPeer.on('error', (err) => {
           console.warn('PeerJS Error:', err);
+          updateNetworkStatus('online');
           if (err.type === 'network' || err.type === 'server-error') {
-            updateNetworkStatus('connecting');
             setTimeout(() => { if (myPeer && !myPeer.destroyed) myPeer.reconnect(); }, 5000);
-          } else {
-            updateNetworkStatus('local');
           }
         });
       } catch (err) {
