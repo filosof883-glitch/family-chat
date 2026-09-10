@@ -2,14 +2,15 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 
-// Настройка Socket.io с подгонкой под большие файлы/буферы
+// Настройка Socket.io с защитой от разрывов Render и поддержкой больших файлов
 const io = new Server(server, {
-  maxHttpBufferSize: 1e8, // 100 MB для передачи медиа/файлов
+  maxHttpBufferSize: 1e8, // 100 MB
+  pingTimeout: 30000,
+  pingInterval: 10000,
   cors: {
     origin: '*',
     methods: ['GET', 'POST']
@@ -19,16 +20,14 @@ const io = new Server(server, {
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '100mb' }));
 
-// Хранилища данных в памяти
-const users = new Map(); // socket.id -> { id, username, status, room, joinedAt, avatar }
+// Хранилища данных в памяти (Привязка по username!)
+const users = new Map(); // username -> { username, status, room, avatar, sockets: Set }
 const privateMessages = new Map(); // conversationKey -> [messages]
 const roomMessages = new Map(); // roomId -> [messages]
-const activeCalls = new Map(); // callId -> { caller, receiver, type, startTime }
 
-// Вспомогательная функция отправки списка онлайн-пользователей
+// Рассылка актуального списка пользователей
 function broadcastUsersList() {
   const usersList = Array.from(users.values()).map(u => ({
-    socketId: u.socketId,
     username: u.username,
     status: u.status || 'online',
     room: u.room || 'general',
@@ -37,13 +36,12 @@ function broadcastUsersList() {
   io.emit('users-list', usersList);
 }
 
-// Генерация ключа личных сообщений
 function getPrivateChatKey(user1, user2) {
   return [user1, user2].sort().join('_');
 }
 
 io.on('connection', (socket) => {
-  console.log(`[CONNECT] Новый сокет подключен: ${socket.id}`);
+  console.log(`[CONNECT] Сокет подключен: ${socket.id}`);
 
   // 1. АВТОРИЗАЦИЯ И СЕССИИ
   socket.on('register-user', (userData) => {
@@ -53,29 +51,36 @@ io.on('connection', (socket) => {
 
       socket.username = username;
       socket.currentRoom = 'general';
+
+      // Входим в общую комнату и создаем персональную комнату по имени пользователя
       socket.join('general');
+      socket.join(username);
 
-      users.set(socket.id, {
-        socketId: socket.id,
-        username: username,
-        status: 'online',
-        room: 'general',
-        joinedAt: new Date().toISOString(),
-        avatar: userData?.avatar || null
-      });
+      if (!users.has(username)) {
+        users.set(username, {
+          username: username,
+          status: 'online',
+          room: 'general',
+          avatar: userData?.avatar || null,
+          sockets: new Set([socket.id])
+        });
 
-      console.log(`[AUTH] Пользователь зарегистрирован: ${username} (${socket.id})`);
+        // Системное сообщение только при первом входе
+        io.to('general').emit('chat message', {
+          id: 'sys_' + Date.now(),
+          user: 'Система',
+          text: `Пользователь ${username} вошел в чат`,
+          timestamp: new Date().toISOString(),
+          isSystem: true
+        });
+      } else {
+        // У пользователя открыто несколько вкладок или произошел реконнект
+        const u = users.get(username);
+        u.sockets.add(socket.id);
+        u.status = 'online';
+      }
 
-      // Системное сообщение в общий чат
-      const sysMsg = {
-        id: 'sys_' + Date.now(),
-        user: 'Система',
-        text: `Пользователь ${username} вошел в чат`,
-        timestamp: new Date().toISOString(),
-        isSystem: true
-      };
-      io.to('general').emit('chat message', sysMsg);
-
+      console.log(`[AUTH] ${username} в сети (Сокетов: ${users.get(username).sockets.size})`);
       broadcastUsersList();
     } catch (err) {
       console.error('[ERROR] register-user:', err);
@@ -85,8 +90,8 @@ io.on('connection', (socket) => {
   // Изменение статуса (Online, Away, DND)
   socket.on('change-status', (status) => {
     try {
-      if (users.has(socket.id)) {
-        users.get(socket.id).status = status;
+      if (socket.username && users.has(socket.username)) {
+        users.get(socket.username).status = status;
         broadcastUsersList();
       }
     } catch (err) {
@@ -99,34 +104,29 @@ io.on('connection', (socket) => {
     try {
       if (!data || (!data.text && !data.file)) return;
 
+      const sender = socket.username || data.user || 'Аноним';
       const payload = {
         id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-        user: socket.username || data.user || 'Аноним',
-        senderSocketId: socket.id,
+        user: sender,
         text: data.text || '',
-        file: data.file || null, // { name, type, size, data }
+        file: data.file || null,
         targetUser: data.targetUser || null,
         room: data.room || 'general',
         timestamp: new Date().toISOString()
       };
 
-      // Если это личное сообщение
       if (data.targetUser) {
-        const targetEntry = Array.from(users.entries()).find(([_, u]) => u.username === data.targetUser);
-        
-        // Сохраняем в историю лс
-        const chatKey = getPrivateChatKey(socket.username, data.targetUser);
+        // ЛИЧНОЕ СООБЩЕНИЕ: Отправка напрямую в персональные комнаты получателя и отправителя
+        const chatKey = getPrivateChatKey(sender, data.targetUser);
         if (!privateMessages.has(chatKey)) privateMessages.set(chatKey, []);
         privateMessages.get(chatKey).push(payload);
 
-        // Отправляем получателю
-        if (targetEntry) {
-          io.to(targetEntry[0]).emit('private message', payload);
+        io.to(data.targetUser).emit('private message', payload);
+        if (sender !== data.targetUser) {
+          io.to(sender).emit('private message', payload);
         }
-        // Отправляем обратно отправителю для подтверждения
-        socket.emit('private message', payload);
       } else {
-        // Сообщение в комнату / общий чат
+        // СООБЩЕНИЕ В ОБЩИЙ ЧАТ
         const targetRoom = data.room || 'general';
         if (!roomMessages.has(targetRoom)) roomMessages.set(targetRoom, []);
         roomMessages.get(targetRoom).push(payload);
@@ -142,10 +142,7 @@ io.on('connection', (socket) => {
   socket.on('typing', (data) => {
     try {
       if (data.targetUser) {
-        const targetEntry = Array.from(users.entries()).find(([_, u]) => u.username === data.targetUser);
-        if (targetEntry) {
-          io.to(targetEntry[0]).emit('typing', { from: socket.username, isTyping: data.isTyping });
-        }
+        io.to(data.targetUser).emit('typing', { from: socket.username, isTyping: data.isTyping });
       } else {
         socket.to(data.room || 'general').emit('typing', { from: socket.username, isTyping: data.isTyping });
       }
@@ -154,45 +151,31 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Запрос истории сообщений
+  // История сообщений
   socket.on('get-history', (data) => {
     try {
       if (data.targetUser) {
         const chatKey = getPrivateChatKey(socket.username, data.targetUser);
-        const history = privateMessages.get(chatKey) || [];
-        socket.emit('history-data', { targetUser: data.targetUser, messages: history });
+        socket.emit('history-data', { targetUser: data.targetUser, messages: privateMessages.get(chatKey) || [] });
       } else {
         const room = data.room || 'general';
-        const history = roomMessages.get(room) || [];
-        socket.emit('history-data', { room, messages: history });
+        socket.emit('history-data', { room, messages: roomMessages.get(room) || [] });
       }
     } catch (err) {
       console.error('[ERROR] get-history:', err);
     }
   });
 
-  // 3. WEBRTC ЗВОНКИ И ИНФРАСТРУКТУРА СИГНАЛИНГА
+  // 3. WEBRTC ЗВОНКИ
   socket.on('call-user', (data) => {
     try {
       if (!data || !data.targetUser) return;
-
-      const targetEntry = Array.from(users.entries()).find(([_, u]) => u.username === data.targetUser);
-
-      if (targetEntry) {
+      
+      if (users.has(data.targetUser)) {
         const callId = 'call_' + Date.now();
-        activeCalls.set(callId, {
-          caller: socket.username,
-          callerSocketId: socket.id,
-          receiver: data.targetUser,
-          receiverSocketId: targetEntry[0],
-          isVideo: !!data.isVideo,
-          status: 'ringing'
-        });
-
-        io.to(targetEntry[0]).emit('incoming-call', {
+        io.to(data.targetUser).emit('incoming-call', {
           callId: callId,
           from: socket.username,
-          fromSocketId: socket.id,
           offer: data.offer,
           isVideo: !!data.isVideo
         });
@@ -201,78 +184,56 @@ io.on('connection', (socket) => {
       }
     } catch (err) {
       console.error('[ERROR] call-user:', err);
-      socket.emit('call-failed', { reason: 'Ошибка инициализации звонка на сервере' });
     }
   });
 
   socket.on('make-answer', (data) => {
-    try {
-      if (data && data.targetSocketId) {
-        io.to(data.targetSocketId).emit('call-answered', {
-          fromSocketId: socket.id,
-          answer: data.answer
-        });
-      }
-    } catch (err) {
-      console.error('[ERROR] make-answer:', err);
+    if (data && data.targetUser) {
+      io.to(data.targetUser).emit('call-answered', { from: socket.username, answer: data.answer });
     }
   });
 
   socket.on('ice-candidate', (data) => {
-    try {
-      if (data && data.targetSocketId) {
-        io.to(data.targetSocketId).emit('ice-candidate', {
-          candidate: data.candidate,
-          fromSocketId: socket.id
-        });
-      }
-    } catch (err) {
-      console.error('[ERROR] ice-candidate:', err);
+    if (data && data.targetUser) {
+      io.to(data.targetUser).emit('ice-candidate', { candidate: data.candidate, from: socket.username });
     }
   });
 
   socket.on('reject-call', (data) => {
-    try {
-      if (data && data.targetSocketId) {
-        io.to(data.targetSocketId).emit('call-rejected', {
-          from: socket.username,
-          reason: 'Вызов отклонен пользователем'
-        });
-      }
-    } catch (err) {
-      console.error('[ERROR] reject-call:', err);
+    if (data && data.targetUser) {
+      io.to(data.targetUser).emit('call-rejected', { from: socket.username, reason: 'Вызов отклонен' });
     }
   });
 
   socket.on('end-call', (data) => {
-    try {
-      if (data && data.targetSocketId) {
-        io.to(data.targetSocketId).emit('call-ended', { from: socket.username });
-      }
-    } catch (err) {
-      console.error('[ERROR] end-call:', err);
+    if (data && data.targetUser) {
+      io.to(data.targetUser).emit('call-ended', { from: socket.username });
     }
   });
 
-  // 4. ДИСКОННЕКТ И ОЧИСТКА
+  // 4. ДИСКОННЕКТ
   socket.on('disconnect', () => {
     try {
-      const u = users.get(socket.id);
-      if (u) {
-        console.log(`[DISCONNECT] Пользователь вышел: ${u.username} (${socket.id})`);
-        
-        // Уведомление в общий чат
-        const sysMsg = {
-          id: 'sys_' + Date.now(),
-          user: 'Система',
-          text: `Пользователь ${u.username} покинул чат`,
-          timestamp: new Date().toISOString(),
-          isSystem: true
-        };
-        io.to('general').emit('chat message', sysMsg);
+      const username = socket.username;
+      if (username && users.has(username)) {
+        const u = users.get(username);
+        u.sockets.delete(socket.id);
 
-        users.delete(socket.id);
-        broadcastUsersList(); // Исправлен вызов: теперь вызывается существующая функция broadcastUsersList
+        // Переводим пользователя в оффлайн только если у него не осталось активных сокетов
+        if (u.sockets.size === 0) {
+          users.delete(username);
+          console.log(`[DISCONNECT] ${username} вышел из сети`);
+
+          io.to('general').emit('chat message', {
+            id: 'sys_' + Date.now(),
+            user: 'Система',
+            text: `Пользователь ${username} покинул чат`,
+            timestamp: new Date().toISOString(),
+            isSystem: true
+          });
+
+          broadcastUsersList();
+        }
       }
     } catch (err) {
       console.error('[ERROR] disconnect:', err);
@@ -280,19 +241,8 @@ io.on('connection', (socket) => {
   });
 });
 
-// Глобальные обработчики для непрерывной работы сервера без вылетов (защита от 502 Bad Gateway)
-process.on('uncaughtException', (err) => {
-  console.error('[CRITICAL] Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[CRITICAL] Unhandled Rejection at:', promise, 'reason:', reason);
-});
+process.on('uncaughtException', (err) => console.error('[CRITICAL] Uncaught Exception:', err));
+process.on('unhandledRejection', (reason) => console.error('[CRITICAL] Unhandled Rejection:', reason));
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`===================================================`);
-  console.log(`  Сервер семейного чата успешно запущен!`);
-  console.log(`  Порт: ${PORT}`);
-  console.log(`===================================================`);
-});
+server.listen(PORT, () => console.log(`Сервер семейного чата запущен на порту ${PORT}`));
