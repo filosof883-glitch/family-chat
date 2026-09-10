@@ -1497,10 +1497,27 @@
     function updateNetworkStatus(status) {
       if (!chatStatusText || !networkStatusDot) return;
       networkStatusDot.className = 'status-indicator-dot';
-      
-      // Статус переподключения убран: любые технические состояния отображаются как стабильное «В сети»
       chatStatusText.innerText = 'P2P + WebRTC В сети';
       chatStatusText.style.color = '#4ade80';
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function readFileAsBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
     }
 
     avatarOptions.forEach(option => {
@@ -1720,6 +1737,43 @@
         }
       });
       if (updated) renderUsersList();
+    }
+
+    function renderRooms() {
+      roomsListContainer.innerHTML = '';
+      roomsList.forEach(r => {
+        const item = document.createElement('div');
+        item.className = `chat-item ${currentRoom === r.id && !selectedTargetUser ? 'active' : ''}`;
+        item.innerHTML = `
+          <div class="user-item-info">
+            <span>${r.icon || '💬'}</span>
+            <span>${escapeHtml(r.name)}</span>
+          </div>
+        `;
+        item.addEventListener('click', () => {
+          selectRoom(r.id, r.name);
+        });
+        roomsListContainer.appendChild(item);
+      });
+    }
+
+    function selectRoom(roomId, roomName) {
+      currentRoom = roomId;
+      selectedTargetUser = null;
+      currentChatName.innerText = roomName;
+      renderRooms();
+      renderUsersList();
+      renderMessages();
+      closeSidebar();
+    }
+
+    function selectUserChat(username, avatar) {
+      selectedTargetUser = username;
+      currentChatName.innerText = `ЛС: ${username}`;
+      renderRooms();
+      renderUsersList();
+      renderMessages();
+      closeSidebar();
     }
 
     function renderUsersList() {
@@ -1958,6 +2012,94 @@
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
+    function updateReactionsUI(msgEl, reactions, msgId) {
+      const reactionsBar = msgEl.querySelector('.reactions-bar');
+      if (!reactionsBar) return;
+      reactionsBar.innerHTML = '';
+      if (!reactions) return;
+
+      const counts = {};
+      Object.entries(reactions).forEach(([user, emoji]) => {
+        if (!counts[emoji]) counts[emoji] = { count: 0, users: [] };
+        counts[emoji].count++;
+        counts[emoji].users.push(user);
+      });
+
+      Object.entries(counts).forEach(([emoji, data]) => {
+        const badge = document.createElement('div');
+        const hasMyReaction = reactions[currentUser] === emoji;
+        badge.className = `reaction-badge ${hasMyReaction ? 'active' : ''}`;
+        badge.innerHTML = `<span>${emoji}</span> <span>${data.count}</span>`;
+        badge.title = data.users.join(', ');
+        badge.addEventListener('click', () => {
+          toggleReaction(msgId, emoji);
+        });
+        reactionsBar.appendChild(badge);
+      });
+    }
+
+    function toggleReaction(msgId, emoji) {
+      const msg = messagesHistory.find(m => m.id === msgId);
+      if (!msg) return;
+      if (!msg.reactions) msg.reactions = {};
+      
+      if (msg.reactions[currentUser] === emoji) {
+        delete msg.reactions[currentUser];
+      } else {
+        msg.reactions[currentUser] = emoji;
+      }
+      
+      saveMessagesHistory();
+      const msgEl = document.getElementById(`msg-${msgId}`);
+      if (msgEl) updateReactionsUI(msgEl, msg.reactions, msgId);
+
+      broadcastData({
+        type: 'reaction',
+        messageId: msgId,
+        user: currentUser,
+        emoji: msg.reactions[currentUser] || null
+      });
+    }
+
+    function showReactionPopover(msgEl, msgId) {
+      const existing = msgEl.querySelector('.reaction-popover');
+      if (existing) {
+        existing.remove();
+        return;
+      }
+
+      const popover = document.createElement('div');
+      popover.className = 'reaction-popover popover-top';
+      const emojis = ['❤️', '👍', '😂', '😮', '😢', '🔥'];
+      emojis.forEach(e => {
+        const span = document.createElement('span');
+        span.innerText = e;
+        span.addEventListener('click', () => {
+          toggleReaction(msgId, e);
+          popover.remove();
+        });
+        popover.appendChild(span);
+      });
+
+      msgEl.appendChild(popover);
+      setTimeout(() => {
+        const closePopover = (evt) => {
+          if (!popover.contains(evt.target)) {
+            popover.remove();
+            document.removeEventListener('click', closePopover);
+          }
+        };
+        document.addEventListener('click', closePopover);
+      }, 0);
+    }
+
+    function deleteMessage(msgId) {
+      messagesHistory = messagesHistory.filter(m => m.id !== msgId);
+      saveMessagesHistory();
+      renderMessages();
+      broadcastData({ type: 'delete-message', messageId: msgId });
+    }
+
     function appendMessageUI(msg, animate = false) {
       if (!shouldShowMsg(msg)) return;
 
@@ -2010,474 +2152,275 @@
         showReactionPopover(msgEl, msg.id);
       });
 
-      if (isOwn) {
-        const deleteBtn = msgEl.querySelector('.delete-btn');
-        if (deleteBtn) {
-          deleteBtn.addEventListener('click', () => {
-            messagesHistory = messagesHistory.filter(m => m.id !== msg.id);
-            saveMessagesHistory();
-            msgEl.remove();
-            broadcastData({ type: 'delete-message', messageId: msg.id });
-            if (messagesHistory.filter(m => shouldShowMsg(m)).length === 0) {
-              renderMessages();
-            }
-          });
-        }
+      const deleteBtn = msgEl.querySelector('.delete-btn');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteMessage(msg.id);
+        });
       }
 
-      updateReactionsUI(msgEl, msg.reactions || {}, msg.id);
+      updateReactionsUI(msgEl, msg.reactions, msg.id);
 
       messagesDiv.appendChild(msgEl);
       messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
 
-    function showReactionPopover(msgEl, messageId) {
-      let popover = msgEl.querySelector('.reaction-popover');
-      if (popover) {
-        popover.remove();
+    // Call Functions
+    async function startCall(targetUser, withVideo = false) {
+      if (!targetUser) {
+        showToast('Выберите пользователя для звонка');
         return;
       }
-
-      document.querySelectorAll('.reaction-popover').forEach(p => p.remove());
-
-      popover = document.createElement('div');
-      popover.className = 'reaction-popover';
-
-      const msgRect = msgEl.getBoundingClientRect();
-      const messagesRect = messagesDiv.getBoundingClientRect();
-
-      if (msgRect.top - messagesRect.top < 70) {
-        popover.classList.add('popover-bottom');
-      } else {
-        popover.classList.add('popover-top');
-      }
-
-      ['👍', '❤️', '😂', '😮', '😢', '🎉'].forEach(emoji => {
-        const span = document.createElement('span');
-        span.innerText = emoji;
-        span.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const msg = messagesHistory.find(m => m.id === messageId);
-          if (msg) {
-            if (!msg.reactions) msg.reactions = {};
-            msg.reactions[currentUser] = emoji;
-            saveMessagesHistory();
-            updateReactionsUI(msgEl, msg.reactions, messageId);
-            broadcastData({ type: 'reaction', messageId, emoji, user: currentUser });
-          }
-          popover.remove();
-        });
-        popover.appendChild(span);
-      });
-
-      msgEl.appendChild(popover);
-    }
-
-    function updateReactionsUI(msgEl, reactions, messageId) {
-      const reactionsBar = msgEl.querySelector('.reactions-bar');
-      if (!reactionsBar) return;
-      reactionsBar.innerHTML = '';
-
-      const counts = {};
-      Object.entries(reactions).forEach(([user, emoji]) => {
-        if (!counts[emoji]) counts[emoji] = { count: 0, users: [] };
-        counts[emoji].count++;
-        counts[emoji].users.push(user);
-      });
-
-      Object.entries(counts).forEach(([emoji, data]) => {
-        const badge = document.createElement('div');
-        const hasReacted = data.users.includes(currentUser);
-        badge.className = `reaction-badge ${hasReacted ? 'active' : ''}`;
-        badge.innerHTML = `<span>${emoji}</span> <span>${data.count}</span>`;
-        badge.title = data.users.join(', ');
-        reactionsBar.appendChild(badge);
-      });
-    }
-
-    audioCallBtn.addEventListener('click', () => startCall('audio'));
-    videoCallBtn.addEventListener('click', () => startCall('video'));
-
-    async function startCall(type) {
-      if (!selectedTargetUser) {
-        showToast('Выберите конкретного участника онлайн для звонка');
+      const targetData = onlineUsers[targetUser];
+      if (!targetData || !targetData.peerId) {
+        showToast('Пользователь недоступен');
         return;
       }
-
-      const targetInfo = onlineUsers[selectedTargetUser];
-      if (!targetInfo) {
-        showToast(`${selectedTargetUser} не в сети для вызова`);
-        return;
-      }
-
-      callStatus.innerText = type === 'audio' ? 'Исходящий аудиозвонок...' : 'Исходящий видеозвонок...';
-      callUserName.innerText = `${targetInfo.avatar || '👤'} ${selectedTargetUser}`;
-      callOverlay.style.display = 'flex';
-      acceptCallBtn.style.display = 'none';
-
-      setupCallUI(type);
-      startRingtone();
 
       try {
         localMediaStream = await navigator.mediaDevices.getUserMedia({
           audio: true,
-          video: type === 'video'
+          video: withVideo
         });
+        localVideo.srcObject = localMediaStream;
+        localVideo.style.display = withVideo ? 'block' : 'none';
+        remoteVideo.style.display = withVideo ? 'block' : 'none';
+        audioAvatar.style.display = withVideo ? 'none' : 'flex';
+        callAvatarIcon.innerText = targetData.avatar || '👤';
 
-        if (type === 'video') localVideo.srcObject = localMediaStream;
+        callOverlay.style.display = 'flex';
+        callStatus.innerText = 'Вызов...';
+        callUserName.innerText = targetUser;
+        acceptCallBtn.style.display = 'none';
 
-        if (myPeer && targetInfo.peerId) {
-          activeCall = myPeer.call(targetInfo.peerId, localMediaStream, {
-            metadata: { type, callerName: currentUser, callerAvatar: selectedAvatar }
+        if (myPeer) {
+          activeCall = myPeer.call(targetData.peerId, localMediaStream, {
+            metadata: { caller: currentUser, video: withVideo }
           });
-          handleCallStream(activeCall, type);
+          setupCallHandlers(activeCall);
         }
-
-      } catch (err) {
-        stopRingtone();
-        showToast('Ошибка доступа к микрофону/камере');
-        endCall(true);
+      } catch (e) {
+        showToast('Ошибка доступа к камере/микрофону');
       }
     }
 
     function handleIncomingMediaCall(call) {
       activeCall = call;
-      const metadata = call.metadata || {};
-      const callType = metadata.type || 'video';
-      const callerName = metadata.callerName || 'Участник семьи';
-      const callerAvatar = metadata.callerAvatar || '👤';
+      const callerName = (call.metadata && call.metadata.caller) ? call.metadata.caller : 'Родственник';
+      const isVideo = call.metadata && call.metadata.video;
 
       startRingtone();
-
-      callStatus.innerText = callType === 'audio' ? 'Входящий аудиозвонок' : 'Входящий видеозвонок';
-      callUserName.innerText = `${callerAvatar} ${callerName}`;
       callOverlay.style.display = 'flex';
+      callStatus.innerText = 'Входящий звонок...';
+      callUserName.innerText = callerName;
       acceptCallBtn.style.display = 'flex';
-
-      setupCallUI(callType);
+      
+      remoteVideo.style.display = isVideo ? 'block' : 'none';
+      localVideo.style.display = isVideo ? 'block' : 'none';
+      audioAvatar.style.display = isVideo ? 'none' : 'flex';
 
       acceptCallBtn.onclick = async () => {
-        acceptCallBtn.style.display = 'none';
         stopRingtone();
-        callStatus.innerText = 'Соединение...';
-
         try {
           localMediaStream = await navigator.mediaDevices.getUserMedia({
             audio: true,
-            video: callType === 'video'
+            video: isVideo
           });
-
-          if (callType === 'video') localVideo.srcObject = localMediaStream;
-
+          localVideo.srcObject = localMediaStream;
           call.answer(localMediaStream);
-          handleCallStream(call, callType);
-
-        } catch (err) {
-          showToast('Не удалось открыть микрофон/камеру');
+          setupCallHandlers(call);
+          acceptCallBtn.style.display = 'none';
+          callStatus.innerText = 'Разговор...';
+          startCallTimer();
+        } catch (e) {
+          showToast('Не удалось ответить на вызов');
           endCall(true);
         }
       };
     }
 
-    function handleCallStream(call, type) {
+    function setupCallHandlers(call) {
       call.on('stream', (remoteStream) => {
         stopRingtone();
-        callStatus.innerText = 'Разговор';
+        remoteVideo.srcObject = remoteStream;
+        callStatus.innerText = 'Разговор...';
         startCallTimer();
-
-        if (type === 'video') {
-          remoteVideo.srcObject = remoteStream;
-        } else {
-          const remoteAudio = new Audio();
-          remoteAudio.srcObject = remoteStream;
-          remoteAudio.play();
-        }
       });
 
-      call.on('close', () => endCall(false));
-      call.on('error', () => endCall(false));
+      call.on('close', () => {
+        endCall(false);
+      });
+
+      call.on('error', () => {
+        endCall(false);
+      });
     }
 
-    function setupCallUI(type) {
-      if (type === 'audio') {
-        remoteVideo.style.display = 'none';
-        localVideo.style.display = 'none';
-        audioAvatar.style.display = 'flex';
-        toggleCamBtn.style.display = 'none';
-        callAvatarIcon.innerText = selectedAvatar || '👤';
-      } else {
-        remoteVideo.style.display = 'block';
-        localVideo.style.display = 'block';
-        audioAvatar.style.display = 'none';
-        toggleCamBtn.style.display = 'flex';
+    function startCallTimer() {
+      if (callTimerInterval) clearInterval(callTimerInterval);
+      callSeconds = 0;
+      callTimer.innerText = '00:00';
+      callTimerInterval = setInterval(() => {
+        callSeconds++;
+        const m = String(Math.floor(callSeconds / 60)).padStart(2, '0');
+        const s = String(callSeconds % 60).padStart(2, '0');
+        callTimer.innerText = `${m}:${s}`;
+      }, 1000);
+    }
+
+    function endCall(notify = true) {
+      stopRingtone();
+      if (callTimerInterval) clearInterval(callTimerInterval);
+      callOverlay.style.display = 'none';
+
+      if (localMediaStream) {
+        localMediaStream.getTracks().forEach(t => t.stop());
+        localMediaStream = null;
+      }
+      if (activeCall) {
+        activeCall.close();
+        activeCall = null;
+      }
+      if (notify) {
+        broadcastData({ type: 'end-call' });
       }
     }
 
+    // Modals and Sidebar Controls
+    function openModal(modal) { modal.style.display = 'flex'; }
+    function closeModal(modal) { modal.style.display = 'none'; }
+    function openSidebar() {
+      sidebar.classList.add('open');
+      sidebarOverlay.classList.add('active');
+    }
+    function closeSidebar() {
+      sidebar.classList.remove('open');
+      sidebarOverlay.classList.remove('active');
+    }
+
+    function openUserProfileModal(username) {
+      const user = onlineUsers[username];
+      if (!user) {
+        viewUserName.innerText = username;
+        viewUserRole.innerText = 'Член семьи';
+        viewUserDob.innerText = '—';
+        viewUserBio.innerText = '—';
+        viewUserAvatar.innerHTML = '👤';
+      } else {
+        viewUserName.innerText = user.name;
+        viewUserRole.innerText = user.role || 'Член семьи';
+        viewUserDob.innerText = user.dob || 'Не указана';
+        viewUserBio.innerText = user.bio || '—';
+        if (user.photo) {
+          viewUserAvatar.innerHTML = `<img src="${user.photo}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+        } else {
+          viewUserAvatar.innerHTML = user.avatar || '👤';
+        }
+      }
+      viewUserCallBtn.onclick = () => {
+        closeModal(viewProfileModal);
+        startCall(username, false);
+      };
+      openModal(viewProfileModal);
+    }
+
+    // UI Event Listeners
+    menuBtn.addEventListener('click', openSidebar);
+    closeSidebarBtn.addEventListener('click', closeSidebar);
+    sidebarOverlay.addEventListener('click', closeSidebar);
+
+    audioCallBtn.addEventListener('click', () => startCall(selectedTargetUser, false));
+    videoCallBtn.addEventListener('click', () => startCall(selectedTargetUser, true));
+    endCallBtn.addEventListener('click', () => endCall(true));
+
     toggleMicBtn.addEventListener('click', () => {
       if (localMediaStream) {
-        const track = localMediaStream.getAudioTracks()[0];
-        if (track) {
+        const audioTrack = localMediaStream.getAudioTracks()[0];
+        if (audioTrack) {
           isAudioMuted = !isAudioMuted;
-          track.enabled = !isAudioMuted;
+          audioTrack.enabled = !isAudioMuted;
           toggleMicBtn.classList.toggle('off', isAudioMuted);
-          toggleMicBtn.innerText = isAudioMuted ? '🔇' : '🎙️';
         }
       }
     });
 
     toggleCamBtn.addEventListener('click', () => {
       if (localMediaStream) {
-        const track = localMediaStream.getVideoTracks()[0];
-        if (track) {
+        const videoTrack = localMediaStream.getVideoTracks()[0];
+        if (videoTrack) {
           isVideoMuted = !isVideoMuted;
-          track.enabled = !isVideoMuted;
+          videoTrack.enabled = !isVideoMuted;
           toggleCamBtn.classList.toggle('off', isVideoMuted);
-          toggleCamBtn.innerText = isVideoMuted ? '🚫' : '📷';
         }
       }
     });
 
-    endCallBtn.addEventListener('click', () => endCall(true));
+    emojiBtn.addEventListener('click', () => {
+      emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'grid' : 'none';
+    });
 
-    function endCall(notify = true) {
-      stopRingtone();
-      if (notify) broadcastData({ type: 'end-call' });
+    document.querySelectorAll('.emoji-item').forEach(item => {
+      item.addEventListener('click', () => {
+        messageInput.value += item.innerText;
+      });
+    });
 
-      if (activeCall) {
-        try { activeCall.close(); } catch(e){}
-        activeCall = null;
-      }
-
-      if (localMediaStream) {
-        localMediaStream.getTracks().forEach(track => track.stop());
-        localMediaStream = null;
-      }
-
-      remoteVideo.srcObject = null;
-      localVideo.srcObject = null;
-      callOverlay.style.display = 'none';
-      stopCallTimer();
-
-      isAudioMuted = false;
-      isVideoMuted = false;
-      toggleMicBtn.classList.remove('off');
-      toggleCamBtn.classList.remove('off');
-      toggleMicBtn.innerText = '🎙️';
-      toggleCamBtn.innerText = '📷';
-    }
-
-    function startCallTimer() {
-      callSeconds = 0;
-      callTimer.innerText = '00:00';
-      clearInterval(callTimerInterval);
-      callTimerInterval = setInterval(() => {
-        callSeconds++;
-        const mins = String(Math.floor(callSeconds / 60)).padStart(2, '0');
-        const secs = String(callSeconds % 60).padStart(2, '0');
-        callTimer.innerText = `${mins}:${secs}`;
-      }, 1000);
-    }
-
-    function stopCallTimer() {
-      clearInterval(callTimerInterval);
-      callTimer.innerText = '00:00';
-    }
-
-    function updateProfilePreview() {
-      if (userPhoto) {
-        profilePhotoPreview.innerHTML = `<img src="${userPhoto}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
-      } else {
-        profilePhotoPreview.innerHTML = selectedAvatar || '👤';
-      }
-    }
+    createRoomBtn.addEventListener('click', () => {
+      const roomName = prompt('Введите название новой комнаты:');
+      if (!roomName) return;
+      const roomId = 'room_' + Date.now();
+      const newRoom = { id: roomId, name: roomName, icon: '💬' };
+      roomsList.push(newRoom);
+      localStorage.setItem('chat_rooms_list', JSON.stringify(roomsList));
+      renderRooms();
+      selectRoom(roomId, roomName);
+    });
 
     openMyProfileBtn.addEventListener('click', () => {
       profileRoleInput.value = userRole;
       profileDobInput.value = userDob;
       profileBioInput.value = userBio;
-      updateProfilePreview();
-      profileModal.style.display = 'flex';
+      if (userPhoto) {
+        profilePhotoPreview.innerHTML = `<img src="${userPhoto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+      } else {
+        profilePhotoPreview.innerText = selectedAvatar;
+      }
+      openModal(profileModal);
     });
 
-    closeProfileModal.addEventListener('click', () => {
-      profileModal.style.display = 'none';
-    });
+    closeProfileModal.addEventListener('click', () => closeModal(profileModal));
+    closeViewProfileModal.addEventListener('click', () => closeModal(viewProfileModal));
 
     profilePhotoInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (file) {
         userPhoto = await readFileAsBase64(file);
-        localStorage.setItem('chat_user_photo', userPhoto);
-        updateProfilePreview();
+        profilePhotoPreview.innerHTML = `<img src="${userPhoto}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
       }
     });
 
     saveProfileBtn.addEventListener('click', () => {
       userRole = profileRoleInput.value;
       userDob = profileDobInput.value;
-      userBio = profileBioInput.value.trim();
+      userBio = profileBioInput.value;
 
+      localStorage.setItem('chat_user_photo', userPhoto);
       localStorage.setItem('chat_user_role', userRole);
       localStorage.setItem('chat_user_dob', userDob);
       localStorage.setItem('chat_user_bio', userBio);
 
-      profileModal.style.display = 'none';
-      showToast('Профиль успешно обновлен!');
+      closeModal(profileModal);
+      showToast('Профиль сохранен');
       broadcastPresence();
     });
 
-    function openUserProfileModal(username) {
-      const u = onlineUsers[username];
-      if (!u) {
-        showToast('Пользователь не найден');
-        return;
-      }
-
-      viewUserName.innerText = u.name;
-      viewUserRole.innerText = u.role || 'Член семьи';
-      viewUserBio.innerText = u.bio ? u.bio : 'Информация не указана';
-
-      if (u.photo) {
-        viewUserAvatar.innerHTML = `<img src="${u.photo}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
-      } else {
-        viewUserAvatar.innerHTML = u.avatar || '👤';
-      }
-
-      if (u.dob) {
-        const dobDate = new Date(u.dob);
-        const age = Math.floor((new Date() - dobDate) / (365.25 * 24 * 60 * 60 * 1000));
-        const formattedDate = dobDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
-        viewUserDob.innerText = `${formattedDate} (${age} лет)`;
-      } else {
-        viewUserDob.innerText = 'Не указана';
-      }
-
-      viewUserCallBtn.onclick = () => {
-        viewProfileModal.style.display = 'none';
-        selectUserChat(u.name, u.avatar);
-        startCall('video');
-      };
-
-      viewProfileModal.style.display = 'flex';
+    // Auto Login on page load if saved
+    if (currentUser && familyCode) {
+      usernameInput.value = currentUser;
+      familyIdInput.value = familyCode;
+      handleLogin();
     }
-
-    closeViewProfileModal.addEventListener('click', () => {
-      viewProfileModal.style.display = 'none';
-    });
-
-    function openSidebar() {
-      sidebar.classList.add('open');
-      sidebarOverlay.classList.add('active');
-    }
-
-    function closeSidebar() {
-      sidebar.classList.remove('open');
-      sidebarOverlay.classList.remove('active');
-    }
-
-    menuBtn.addEventListener('click', openSidebar);
-    closeSidebarBtn.addEventListener('click', closeSidebar);
-    sidebarOverlay.addEventListener('click', closeSidebar);
-
-    function selectUserChat(username, avatar) {
-      selectedTargetUser = username;
-      currentRoom = null;
-      currentChatName.innerText = `${avatar || '👤'} ${username}`;
-      chatStatusText.innerText = 'Личные сообщения';
-
-      document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-      closeSidebar();
-      renderMessages();
-    }
-
-    function selectRoom(roomId, roomName) {
-      currentRoom = roomId;
-      selectedTargetUser = null;
-      currentChatName.innerText = roomName;
-      chatStatusText.innerText = 'Общение со всей семьей';
-      
-      document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
-      const activeEl = document.querySelector(`[data-room="${roomId}"]`);
-      if (activeEl) activeEl.classList.add('active');
-      
-      closeSidebar();
-      renderMessages();
-    }
-
-    createRoomBtn.addEventListener('click', () => {
-      const roomName = prompt('Введите название новой комнаты:');
-      if (roomName && roomName.trim()) {
-        const newRoom = { id: 'room_' + Date.now(), name: roomName.trim(), icon: '🏠' };
-        roomsList.push(newRoom);
-        localStorage.setItem('chat_rooms_list', JSON.stringify(roomsList));
-        renderRooms();
-        selectRoom(newRoom.id, newRoom.name);
-      }
-    });
-
-    function renderRooms() {
-      roomsListContainer.innerHTML = '';
-      roomsList.forEach(room => {
-        const item = document.createElement('div');
-        item.className = `chat-item ${currentRoom === room.id && !selectedTargetUser ? 'active' : ''}`;
-        item.dataset.room = room.id;
-        item.innerHTML = `
-          <div class="user-item-info">
-            <span>${room.icon}</span>
-            <span>${escapeHtml(room.name)}</span>
-          </div>
-        `;
-        item.addEventListener('click', () => selectRoom(room.id, room.name));
-        roomsListContainer.appendChild(item);
-      });
-    }
-
-    emojiBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      emojiPicker.style.display = emojiPicker.style.display === 'none' ? 'grid' : 'none';
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!emojiPicker.contains(e.target) && e.target !== emojiBtn) {
-        emojiPicker.style.display = 'none';
-      }
-      if (!e.target.closest('.reaction-popover') && !e.target.closest('.react-btn')) {
-        document.querySelectorAll('.reaction-popover').forEach(p => p.remove());
-      }
-    });
-
-    document.querySelectorAll('.emoji-item').forEach(item => {
-      item.addEventListener('click', () => {
-        messageInput.value += item.innerText;
-        messageInput.focus();
-      });
-    });
-
-    function escapeHtml(str) {
-      if (!str) return '';
-      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-    }
-
-    function readFileAsBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-        reader.readAsDataURL(file);
-      });
-    }
-
-    window.addEventListener('DOMContentLoaded', () => {
-      if (currentUser && familyCode) {
-        usernameInput.value = currentUser;
-        familyIdInput.value = familyCode;
-        authScreen.style.display = 'none';
-        chatScreen.style.display = 'flex';
-        initPeerJS();
-        renderRooms();
-        renderMessages();
-      }
-    });
   </script>
 </body>
 </html>
